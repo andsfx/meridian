@@ -82,7 +82,7 @@ export const config = {
 
   // ─── Pool Screening Thresholds ───────────
   screening: {
-    source:            u.screeningSource    ?? "meteora", // meteora | gmgn
+    source:            (u.screeningSource === "both" ? "gmgn" : (u.screeningSource ?? "meteora")), // meteora | gmgn | both (auto-fallback to gmgn)
     excludeHighSupplyConcentration: u.excludeHighSupplyConcentration ?? true,
     minFeeActiveTvlRatio: u.minFeeActiveTvlRatio ?? 0.05,
     minTvl:            u.minTvl            ?? 10_000,
@@ -321,7 +321,7 @@ export function reloadScreeningThresholds() {
   try {
     const fresh = readJsonIfExists(USER_CONFIG_PATH);
     const s = config.screening;
-    if (fresh.screeningSource != null) s.source = fresh.screeningSource;
+    if (fresh.screeningSource != null) s.source = fresh.screeningSource === "both" ? "gmgn" : fresh.screeningSource;
     if (fresh.minFeeActiveTvlRatio != null) s.minFeeActiveTvlRatio = fresh.minFeeActiveTvlRatio;
     if (fresh.minTokenFeesSol  != null) s.minTokenFeesSol  = fresh.minTokenFeesSol;
     if (fresh.maxTop10Pct      != null) s.maxTop10Pct      = fresh.maxTop10Pct;
@@ -358,6 +358,11 @@ export function reloadScreeningThresholds() {
     );
   } catch { /* ignore */ }
   try {
+    // Reload management thresholds (trailing TP, etc.)
+    const m = config.management;
+    if (fresh.trailingTriggerPct != null) m.trailingTriggerPct = fresh.trailingTriggerPct;
+    if (fresh.trailingDropPct != null) m.trailingDropPct = fresh.trailingDropPct;
+
     const freshGmgn = readJsonIfExists(GMGN_CONFIG_PATH);
     const g = config.gmgn;
     for (const [key, value] of Object.entries(freshGmgn)) {

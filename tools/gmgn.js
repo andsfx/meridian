@@ -115,6 +115,14 @@ function optionalNum(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+// Fail-closed numeric: if value is null/NaN/undefined, returns Infinity so
+// any comparison like failNum(X) > threshold evaluates to true → pool REJECTED.
+// Use this in security/risk reject filters where missing data must block entry.
+function failNum(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : Infinity;
+}
+
 function boolish(value) {
   return value === true || value === 1 || value === "1" || String(value).toLowerCase() === "true" || String(value).toLowerCase() === "yes";
 }
@@ -189,11 +197,11 @@ function analyzeSecurity(security = {}) {
   if (String(security.is_honeypot || "").toLowerCase() === "yes") reasons.push("honeypot");
   if (boolish(security.is_wash_trading)) reasons.push("wash trading");
   if (String(security.creator_token_status || "").toLowerCase() === "creator_hold") reasons.push("creator still holding");
-  if (num(security.rug_ratio) > g.maxRugRatio) reasons.push(`rug ratio ${ratioPct(security.rug_ratio)}%`);
-  if (num(security.top_10_holder_rate) > g.maxTop10HolderRate) reasons.push(`top10 ${ratioPct(security.top_10_holder_rate)}%`);
-  if (num(security.bundler_trader_amount_rate) > g.maxBundlerRate) reasons.push(`bundler ${ratioPct(security.bundler_trader_amount_rate)}%`);
-  if (num(security.rat_trader_amount_rate) > g.maxRatTraderRate) reasons.push(`insider ${ratioPct(security.rat_trader_amount_rate)}%`);
-  if (num(security.sniper_count) > g.maxSniperCount) reasons.push(`snipers ${num(security.sniper_count)}`);
+  if (failNum(security.rug_ratio) > g.maxRugRatio) reasons.push(`rug ratio ${ratioPct(security.rug_ratio)}%`);
+  if (failNum(security.top_10_holder_rate) > g.maxTop10HolderRate) reasons.push(`top10 ${ratioPct(security.top_10_holder_rate)}%`);
+  if (failNum(security.bundler_trader_amount_rate) > g.maxBundlerRate) reasons.push(`bundler ${ratioPct(security.bundler_trader_amount_rate)}%`);
+  if (failNum(security.rat_trader_amount_rate) > g.maxRatTraderRate) reasons.push(`insider ${ratioPct(security.rat_trader_amount_rate)}%`);
+  if (failNum(security.sniper_count) > g.maxSniperCount) reasons.push(`snipers ${num(security.sniper_count)}`);
   return { passed: reasons.length === 0, reasons };
 }
 
@@ -216,12 +224,12 @@ function analyzeTokenInfo(info = {}) {
   const totalFeeSol = num(info.total_fee);
   if (num(info.holder_count) < g.minHolders) reasons.push(`holders ${num(info.holder_count)} < ${g.minHolders}`);
   if (totalFeeSol < g.minTotalFeeSol) reasons.push(`total fee ${totalFeeSol} SOL < ${g.minTotalFeeSol} SOL`);
-  if (num(stat.top_10_holder_rate) > g.maxTop10HolderRate) reasons.push(`top10 ${ratioPct(stat.top_10_holder_rate)}%`);
-  if (g.maxDevTeamHoldRate != null && num(stat.dev_team_hold_rate) > g.maxDevTeamHoldRate) reasons.push(`dev team ${ratioPct(stat.dev_team_hold_rate)}%`);
-  if (num(stat.bot_degen_rate) > g.maxBotDegenRate) reasons.push(`bot degen ${ratioPct(stat.bot_degen_rate)}%`);
-  if (g.maxFreshWalletRate != null && num(stat.fresh_wallet_rate) > g.maxFreshWalletRate) reasons.push(`fresh wallets ${ratioPct(stat.fresh_wallet_rate)}%`);
-  if (num(stat.top_bundler_trader_percentage) > g.maxBundlerRate) reasons.push(`bundler ${ratioPct(stat.top_bundler_trader_percentage)}%`);
-  if (num(stat.top_rat_trader_percentage) > g.maxRatTraderRate) reasons.push(`insider ${ratioPct(stat.top_rat_trader_percentage)}%`);
+  if (failNum(stat.top_10_holder_rate) > g.maxTop10HolderRate) reasons.push(`top10 ${ratioPct(stat.top_10_holder_rate)}%`);
+  if (g.maxDevTeamHoldRate != null && failNum(stat.dev_team_hold_rate) > g.maxDevTeamHoldRate) reasons.push(`dev team ${ratioPct(stat.dev_team_hold_rate)}%`);
+  if (failNum(stat.bot_degen_rate) > g.maxBotDegenRate) reasons.push(`bot degen ${ratioPct(stat.bot_degen_rate)}%`);
+  if (g.maxFreshWalletRate != null && failNum(stat.fresh_wallet_rate) > g.maxFreshWalletRate) reasons.push(`fresh wallets ${ratioPct(stat.fresh_wallet_rate)}%`);
+  if (failNum(stat.top_bundler_trader_percentage) > g.maxBundlerRate) reasons.push(`bundler ${ratioPct(stat.top_bundler_trader_percentage)}%`);
+  if (failNum(stat.top_rat_trader_percentage) > g.maxRatTraderRate) reasons.push(`insider ${ratioPct(stat.top_rat_trader_percentage)}%`);
   return {
     passed: reasons.length === 0,
     reasons,
@@ -538,7 +546,15 @@ export async function discoverGmgnPools({ limit = 10 } = {}) {
   const s1 = ranked.filter((token) => {
     const check = passBasicRankFilter(token);
     if (!check.pass) {
-      filtered.push({ stage: 1, name: token.symbol || token.address, reason: check.reasons.join(", ") });
+      filtered.push({
+        stage: 1,
+        name: token.symbol || token.address,
+        reason: check.reasons.join(", "),
+        mcap: token.market_cap ?? token.mcap ?? null,
+        volume: token.volume ?? null,
+        holders: token.holder_count ?? token.holders ?? null,
+        age_hours: token.open_timestamp ? (Date.now() / 1000 - token.open_timestamp) / 3600 : null,
+      });
       return false;
     }
     return true;
@@ -556,7 +572,14 @@ export async function discoverGmgnPools({ limit = 10 } = {}) {
       const info = infoPayload?.data?.data || infoPayload?.data || infoPayload;
       const infoCheck = analyzeTokenInfo(info);
       if (!infoCheck.passed) {
-        filtered.push({ stage: 2, name: token.symbol || mint, reason: infoCheck.reasons.join(", ") });
+        filtered.push({
+          stage: 2,
+          name: token.symbol || mint,
+          reason: infoCheck.reasons.join(", "),
+          mcap: token.market_cap ?? token.mcap ?? info?.market_cap ?? null,
+          holders: token.holder_count ?? token.holders ?? info?.holder_count ?? null,
+          volume: token.volume ?? info?.volume ?? null,
+        });
         continue;
       }
       s2.push({ token, info, infoCheck });
@@ -588,7 +611,13 @@ export async function discoverGmgnPools({ limit = 10 } = {}) {
 
       const topPools = await fetchTopMeteoraDlmmPoolsForMint(mint, minTvl, 2);
       if (topPools.length === 0) {
-        filtered.push({ stage: 3, name: token.symbol || mint, reason: `no SOL DLMM pool above tvl>${minTvl}` });
+        filtered.push({
+          stage: 3,
+          name: token.symbol || mint,
+          reason: `no SOL DLMM pool above tvl>${minTvl}`,
+          mcap: token.market_cap ?? token.mcap ?? null,
+          holders: token.holder_count ?? token.holders ?? null,
+        });
         continue;
       }
       s3.push({ token, info, infoCheck, holdersCheck, topPools });
@@ -613,7 +642,13 @@ export async function discoverGmgnPools({ limit = 10 } = {}) {
         indicatorCheck = { passed: true, reasons: [] };
       }
       if (!indicatorCheck.passed) {
-        filtered.push({ stage: 4, name: entry.token.symbol || mint, reason: indicatorCheck.reasons.join(", ") });
+        filtered.push({
+          stage: 4,
+          name: entry.token.symbol || mint,
+          reason: indicatorCheck.reasons.join(", "),
+          mcap: entry.token.market_cap ?? entry.token.mcap ?? null,
+          holders: entry.token.holder_count ?? entry.token.holders ?? null,
+        });
         continue;
       }
       s4.push({ ...entry, indicatorSignal: indicatorCheck.signal });

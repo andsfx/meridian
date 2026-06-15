@@ -14,7 +14,7 @@ import { studyTopLPers } from "./study.js";
 import { addLesson, clearAllLessons, clearPerformance, removeLessonsByKeyword, getPerformanceHistory, pinLesson, unpinLesson, listLessons } from "../lessons.js";
 import { setPositionInstruction } from "../state.js";
 
-import { getPoolMemory, addPoolNote } from "../pool-memory.js";
+import { getPoolMemory, addPoolNote, isPoolOnCooldown, isBaseMintOnCooldown } from "../pool-memory.js";
 import { addStrategy, listStrategies, getStrategy, setActiveStrategy, removeStrategy } from "../strategy-library.js";
 import { addToBlacklist, removeFromBlacklist, listBlacklist } from "../token-blacklist.js";
 import { blockDev, unblockDev, listBlockedDevs } from "../dev-blocklist.js";
@@ -89,7 +89,9 @@ function poolDetailVolatility(pool) {
 }
 
 async function fetchFreshPoolDetail(poolAddress, timeframe = config.screening.timeframe || "5m") {
-  const encodedTimeframe = encodeURIComponent(timeframe);
+  // Fix: config.screening.timeframe can be an Array — Meteora API accepts single string only
+  const tf = Array.isArray(timeframe) ? timeframe[0] : timeframe;
+  const encodedTimeframe = encodeURIComponent(tf);
   const filter = encodeURIComponent(`pool_address=${poolAddress}`);
   const url = `${POOL_DISCOVERY_BASE}/pools?page_size=1&filter_by=${filter}&timeframe=${encodedTimeframe}`;
   const res = await fetch(url);
@@ -818,6 +820,22 @@ async function runSafetyChecks(name, args) {
           return {
             pass: false,
             reason: `Already holding base token ${args.base_mint} in another pool. One position per token only.`,
+          };
+        }
+      }
+
+      // Check repeat deploy cooldowns
+      if (config.management.repeatDeployCooldownEnabled) {
+        if (args.pool_address && isPoolOnCooldown(args.pool_address)) {
+          return {
+            pass: false,
+            reason: `Pool ${args.pool_address} is on cooldown from a recent close. Cannot redeploy yet.`,
+          };
+        }
+        if (args.base_mint && isBaseMintOnCooldown(args.base_mint)) {
+          return {
+            pass: false,
+            reason: `Base token ${args.base_mint} is on cooldown from a recent close. Cannot redeploy yet.`,
           };
         }
       }

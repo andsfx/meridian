@@ -28,6 +28,33 @@ import {
 import { generateBriefing } from "./briefing.js";
 import { getLastBriefingDate, setLastBriefingDate, getTrackedPosition, getTrackedPositions, setPositionInstruction, updatePnlAndCheckExits, queuePeakConfirmation, resolvePendingPeak, queueTrailingDropConfirmation, resolvePendingTrailingDrop } from "./state.js";
 import { getActiveStrategy } from "./strategy-library.js";
+
+// ─── HTML escape helper (Telegram parse_mode: HTML) ──────────────────
+function escapeHtml(text) {
+  return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+// Escape HTML but preserve allowed Telegram tags: <b>, <i>, <code>, <pre>, <a href="...">
+function safeTelegramHtml(text) {
+  const allowedPattern = /<\/?(b|i|code|pre|u|s|strike|del)>|<a\s+href="[^"]*">|<\/a>/gi;
+  const parts = [];
+  let lastIndex = 0;
+  let match;
+  const str = String(text);
+  const regex = new RegExp(allowedPattern);
+  while ((match = regex.exec(str)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(escapeHtml(str.slice(lastIndex, match.index)));
+    }
+    parts.push(match[0]); // keep the allowed tag as-is
+    lastIndex = regex.lastIndex;
+  }
+  if (lastIndex < str.length) {
+    parts.push(escapeHtml(str.slice(lastIndex)));
+  }
+  return parts.join("");
+}
+
 import { recordPositionSnapshot, recallForPool, addPoolNote } from "./pool-memory.js";
 import { checkSmartWalletsOnPool } from "./smart-wallets.js";
 import { getTokenNarrative, getTokenInfo } from "./tools/token.js";
@@ -287,29 +314,41 @@ export async function runManagementCycle({ silent = false } = {}) {
     // ── Build JS report ──────────────────────────────────────────────
     const totalValue = positionData.reduce((s, p) => s + (p.total_value_usd ?? 0), 0);
     const totalUnclaimed = positionData.reduce((s, p) => s + (p.unclaimed_fees_usd ?? 0), 0);
+    const cur = config.management.solMode ? "◎" : "$";
+    const aLbl = (m) => { const n=Number(m); if(!Number.isFinite(n)) return "?"; const h=Math.floor(n/60),r=Math.round(n%60); return h>0?`${h}h${r}m`:`${r}m`; };
+    const fmtN = (v, d=4) => Number.isFinite(Number(v)) ? Number(v).toFixed(d) : "?";
 
+    const actionEmoji = { CLOSE: "❌", CLAIM: "💰", STAY: "✅", INSTRUCTION: "📌" };
     const reportLines = positionData.map((p) => {
       const act = actionMap.get(p.position);
-      const inRange = p.in_range ? "🟢 IN" : `🔴 OOR ${p.minutes_out_of_range ?? 0}m`;
-      const val = config.management.solMode ? `◎${p.total_value_usd ?? "?"}` : `$${p.total_value_usd ?? "?"}`;
-      const unclaimed = config.management.solMode ? `◎${p.unclaimed_fees_usd ?? "?"}` : `$${p.unclaimed_fees_usd ?? "?"}`;
-      const statusLabel = act.action === "INSTRUCTION" ? "HOLD (instruction)" : act.action;
-      let line = `**${p.pair}** | Age: ${p.age_minutes ?? "?"}m | Val: ${val} | Unclaimed: ${unclaimed} | PnL: ${p.pnl_pct ?? "?"}% | Yield: ${p.fee_per_tvl_24h ?? "?"}% | ${inRange} | ${statusLabel}`;
-      if (p.instruction) line += `\nNote: "${p.instruction}"`;
-      if (act.action === "CLOSE" && act.rule === "exit") line += `\n⚡ Trailing TP: ${act.reason}`;
-      if (act.action === "CLOSE" && act.rule && act.rule !== "exit") line += `\nRule ${act.rule}: ${act.reason}`;
-      if (act.action === "CLAIM") line += `\n→ Claiming fees`;
-      return line;
+      const statusEmoji = p.in_range ? "🟢" : "🔴";
+      const statusTxt = p.in_range ? "In Range" : `OOR ${aLbl(p.minutes_out_of_range ?? 0)}`;
+      const actLabel = act.action === "INSTRUCTION" ? "HOLD (instruction)" : act.action;
+      const actTag = `${actionEmoji[act.action] || "•"} ${actLabel}`;
+      const pnlRaw = Number(p.pnl_pct);
+      const pnlEmoji = Number.isFinite(pnlRaw) ? (pnlRaw >= 0 ? "🟢" : "🔴") : "⚪";
+      const lines = [
+        `<b>${p.pair}</b> — ${statusEmoji} ${statusTxt} | ${actTag}`,
+        `   Val    : ${cur}${fmtN(p.total_value_usd)}`,
+        `   PnL    : ${pnlRaw?.toFixed(2) ?? "?"}% ${pnlEmoji}`,
+        `   Fee    : ${cur}${fmtN(p.unclaimed_fees_usd)}`,
+        `   Yield  : ${p.fee_per_tvl_24h ?? "?"}%/24h`,
+        `   Age    : ${aLbl(p.age_minutes)}`,
+      ];
+      if (p.instruction) lines.push(`   Note   : _"${p.instruction}"_`);
+      if (act.action === "CLOSE" && act.rule === "exit") lines.push(`   ⚡ TP   : ${act.reason}`);
+      if (act.action === "CLOSE" && act.rule && act.rule !== "exit") lines.push(`   Rule   : ${act.rule} — ${act.reason}`);
+      if (act.action === "CLAIM") lines.push(`   → Claiming fees`);
+      return lines.join("\n");
     });
 
     const needsAction = [...actionMap.values()].filter(a => a.action !== "STAY");
     const actionSummary = needsAction.length > 0
-      ? needsAction.map(a => a.action === "INSTRUCTION" ? "EVAL instruction" : `${a.action}${a.reason ? ` (${a.reason})` : ""}`).join(", ")
-      : "no action";
+      ? needsAction.map(a => a.action === "INSTRUCTION" ? "📌 EVAL instruction" : `${actionEmoji[a.action] || "•"} ${a.action}${a.reason ? ` (${a.reason})` : ""}`).join("\n")
+      : "⏸ no action";
 
-    const cur = config.management.solMode ? "◎" : "$";
     mgmtReport = reportLines.join("\n\n") +
-      `\n\nSummary: 💼 ${positions.length} positions | ${cur}${totalValue.toFixed(4)} | fees: ${cur}${totalUnclaimed.toFixed(4)} | ${actionSummary}`;
+      `\n\n─────────────\n📊 <b>Summary</b>\nPos    : ${positions.length}/${config.risk.maxPositions}\nValue  : ${cur}${fmtN(totalValue)}\nFees   : ${cur}${fmtN(totalUnclaimed)}\n${actionSummary}`;
 
     // ── Call LLM only if action needed ──────────────────────────────
     const actionPositions = positionData.filter(p => {
@@ -370,8 +409,9 @@ After executing, write a brief one-line result per position.
     _managementBusy = false;
     if (!silent && telegramEnabled()) {
       if (mgmtReport) {
-        if (liveMessage) await liveMessage.finalize(stripThink(mgmtReport)).catch(() => {});
-        else sendMessage(`🔄 Management Cycle\n\n${stripThink(mgmtReport)}`).catch(() => { });
+        const safeMgmt = safeTelegramHtml(stripThink(mgmtReport));
+        if (liveMessage) await liveMessage.finalize(safeMgmt).catch(() => {});
+        else sendMessage(`🔄 Management Cycle\n\n${safeMgmt}`).catch(() => { });
       }
       for (const p of positions) {
         if (!p.in_range && p.minutes_out_of_range >= config.management.outOfRangeWaitMinutes) {
@@ -399,7 +439,7 @@ export async function runScreeningCycle({ silent = false } = {}) {
     [prePositions, preBalance] = await Promise.all([getMyPositions({ force: true }), getWalletBalances()]);
     if (prePositions.total_positions >= config.risk.maxPositions) {
       log("cron", `Screening skipped — max positions reached (${prePositions.total_positions}/${config.risk.maxPositions})`);
-      screenReport = `Screening skipped — max positions reached (${prePositions.total_positions}/${config.risk.maxPositions}).`;
+      screenReport = `⏸ <b>Screening skipped</b> — max positions (${prePositions.total_positions}/${config.risk.maxPositions})`;
       appendDecision({
         type: "skip",
         actor: "SCREENER",
@@ -413,7 +453,7 @@ export async function runScreeningCycle({ silent = false } = {}) {
     const isDryRun = process.env.DRY_RUN === "true";
     if (!isDryRun && preBalance.sol < minRequired) {
       log("cron", `Screening skipped — insufficient SOL (${preBalance.sol.toFixed(3)} < ${minRequired} needed for deploy + gas)`);
-      screenReport = `Screening skipped — insufficient SOL (${preBalance.sol.toFixed(3)} < ${minRequired} needed for deploy + gas).`;
+      screenReport = `⏸ <b>Screening skipped</b> — insufficient SOL (${preBalance.sol.toFixed(3)} < ${minRequired} need)`;
       appendDecision({
         type: "skip",
         actor: "SCREENER",
@@ -425,12 +465,12 @@ export async function runScreeningCycle({ silent = false } = {}) {
     }
   } catch (e) {
     log("cron_error", `Screening pre-check failed: ${e.message}`);
-    screenReport = `Screening pre-check failed: ${e.message}`;
+    screenReport = `❌ <b>Screening failed</b> — ${e.message}`;
     _screeningBusy = false;
     return screenReport;
   }
   if (!silent && telegramEnabled()) {
-    liveMessage = await createLiveMessage("🔍 Screening Cycle", "Scanning candidates...");
+    liveMessage = await createLiveMessage("🔍 <b>Screening Cycle</b>", "Scanning candidates...");
   }
   timers.screeningLastRun = Date.now();
   log("cron", `Starting screening cycle [model: ${config.llm.screeningModel}]`);
@@ -449,7 +489,7 @@ export async function runScreeningCycle({ silent = false } = {}) {
     // Fetch top candidates, then recon each sequentially with a small delay to avoid 429s
     const topCandidates = await getTopCandidates({ limit: 10 }).catch((e) => ({ _error: e.message }));
     if (topCandidates?._error) {
-      screenReport = `Screening failed: ${topCandidates._error}`;
+      screenReport = `❌ <b>Screening failed</b> — ${topCandidates._error}`;
       return screenReport;
     }
     const candidates = (topCandidates?.candidates || topCandidates?.pools || []).slice(0, 10);
@@ -504,15 +544,15 @@ export async function runScreeningCycle({ silent = false } = {}) {
     if (passing.length === 0) {
       const combined = filteredOut.length > 0 ? filteredOut : earlyFilteredExamples;
       const combinedExamples = combined.slice(0, 5)
-        .map((entry) => `- ${entry.name}: ${entry.reason}`)
+        .map((entry) => `  • ${entry.name}: ${entry.reason}`)
         .join("\n");
       const funnelBlock = buildGmgnFunnelReport(gmgnStageCounts, gmgnAllFiltered, { fromStage: 2 });
-      const thresholds = `Thresholds: tvl>$${config.screening.minTvl} | vol>$${config.screening.minVolume} | organic>${config.screening.minOrganic}% | holders>${config.screening.minHolders} | fee/tvl>${config.screening.minFeeActiveTvlRatio}%`;
+      const thresholds = `Thresholds: tvl>$${config.screening.minTvl} | vol>$${config.screening.minVolume} | org>${config.screening.minOrganic}% | hld>${config.screening.minHolders} | fee/tvl>${config.screening.minFeeActiveTvlRatio}%`;
       screenReport = funnelBlock
-        ? `No candidates available.\n\n${funnelBlock}`
+        ? `⛹ <b>NO DEPLOY</b>\n\nAll candidates filtered before LLM eval.\n\n${funnelBlock}`
         : combinedExamples
-          ? `No candidates available.\nFiltered examples:\n${combinedExamples}`
-          : `No candidates available (all filtered).\n${thresholds}`;
+          ? `⛹ <b>NO DEPLOY</b>\n\nAll candidates filtered.\n\n<b>Examples:</b>\n${combinedExamples}`
+          : `⛹ <b>NO DEPLOY</b>\n\nAll candidates filtered.\n\n*${thresholds}*`;
       appendDecision({
         type: "no_deploy",
         actor: "SCREENER",
@@ -534,18 +574,18 @@ export async function runScreeningCycle({ silent = false } = {}) {
         const candidateName = passing[0].pool?.name || "unknown";
         const funnelBlock = buildGmgnFunnelReport(gmgnStageCounts, gmgnAllFiltered, { fromStage: 2 });
         screenReport = [
-          "⛔ NO DEPLOY",
+          "⛔ <b>NO DEPLOY</b>",
           "",
           "Cycle finished with no valid entry.",
           "",
-          "BEST LOOKING CANDIDATE",
-          candidateName,
+          "🔍 <b>BEST LOOKING CANDIDATE</b>",
+          escapeHtml(candidateName),
           "",
-          "WHY SKIPPED",
-          `Only one candidate survived filtering, but it was not worth deploying: ${skipReason}.`,
+          "⚠️ <b>WHY SKIPPED</b>",
+          `Only one candidate survived filtering, but it was not worth deploying: ${escapeHtml(skipReason)}.`,
           "",
-          "REJECTED",
-          `- ${candidateName}: ${skipReason}`,
+          "❌ <b>REJECTED</b>",
+          `- ${escapeHtml(candidateName)}: ${escapeHtml(skipReason)}`,
           funnelBlock ? `\n─────────────\n${funnelBlock}` : null,
         ].filter(Boolean).join("\n");
         appendDecision({
@@ -647,13 +687,13 @@ STEPS:
    pass deploy_position.volatility = the candidate volatility value.
    bins_above = 0. Single-side SOL only: set amount_y, keep amount_x = 0.
 4. Report in this exact format (no tables, no extra sections):
-   🚀 DEPLOYED
+   🚀 <b>DEPLOYED</b>
 
-   <pool name>
-   <pool address>
+   <b>Pool Name</b>
+   Pool Address
 
-   ◎ <deploy amount> SOL | <strategy> | bin <active_bin>
-   Range: <minPrice> → <maxPrice>
+   ◎ Amount SOL | Strategy | bin Active Bin
+   Range: Min Price → Max Price
    Range cover: <downside %> downside | <upside %> upside | <total width %> total
 
    IMPORTANT:
@@ -663,36 +703,36 @@ STEPS:
      range_coverage.upside_pct
      range_coverage.width_pct
 
-   MARKET
-   Fee/TVL: <x>%
-   Volume: $<x>
-   TVL: $<x>
-   Volatility: <x>
-   Organic: <x>
-   Mcap: $<x>
-   Age: <x>h
+   <b>MARKET</b>
+   Fee/TVL : X%
+   Volume  : $X
+   TVL     : $X
+   Vol     : X
+   Organic : X
+   Mcap    : $X
+   Age     : Xh
 
-   AUDIT
-   Top10: <x>%
-   Bots: <x>%
-   Fees paid: <x> SOL
-   Smart wallets: <names or none>
+   <b>AUDIT</b>
+   Top10   : X%
+   Bots    : X%
+   Fees    : X SOL
+   Smart   : Names/None
 
-   WHY THIS WON
-   <2-4 concise sentences on why this pool won, key risks, and why it still beat the alternatives>
+   <b>WHY THIS WON</b>
+   [2-4 sentences on why this pool won, key risks, and why it still beat the alternatives]
 5. If no pool qualifies, report in this exact format instead:
-   ⛔ NO DEPLOY
+   ⛹ <b>NO DEPLOY</b>
 
    Cycle finished with no valid entry.
 
-   BEST LOOKING CANDIDATE
-   <name or none>
+   <b>BEST LOOKING CANDIDATE</b>
+   Name/None
 
-   WHY SKIPPED
-   <2-4 concise sentences explaining why nothing was good enough>
+   <b>WHY SKIPPED</b>
+   [2-4 sentences explaining why nothing was good enough>
 
-   REJECTED
-   <short flat list of top candidate names and why they were skipped>
+   <b>REJECTED</b>
+   [list reasons]
 IMPORTANT:
 - Keep the whole report compact and highly scannable for Telegram.
       `, config.llm.maxSteps, [], "SCREENER", config.llm.screeningModel, 2048, {
@@ -727,13 +767,14 @@ IMPORTANT:
     }
   } catch (error) {
     log("cron_error", `Screening cycle failed: ${error.message}`);
-    screenReport = `Screening cycle failed: ${error.message}`;
+    screenReport = `❌ <b>Screening cycle failed</b> — ${error.message}`;
   } finally {
     _screeningBusy = false;
     if (!silent && telegramEnabled()) {
       if (screenReport) {
-        if (liveMessage) await liveMessage.finalize(stripThink(screenReport)).catch(() => {});
-        else sendMessage(`🔍 Screening Cycle\n\n${stripThink(screenReport)}`).catch(() => { });
+        const safeReport = safeTelegramHtml(stripThink(screenReport));
+        if (liveMessage) await liveMessage.finalize(safeReport).catch(() => {});
+        else sendMessage(`🔍 <b>Screening Cycle</b>\n\n${safeReport}`).catch(() => { });
       }
     }
   }
@@ -957,18 +998,33 @@ function getDeterministicCloseRule(position, managementConfig) {
 function buildGmgnFunnelReport(stageCounts, allFiltered = [], { fromStage = 1 } = {}) {
   if (!stageCounts) return null;
   const sc = stageCounts;
-  const funnel = `GMGN funnel: ranked=${sc.ranked ?? "?"} → S1=${sc.s1 ?? "?"} → S2=${sc.s2 ?? "?"} → S3=${sc.s3 ?? "?"} → S4=${sc.s4 ?? "?"} → final=${sc.s5 ?? "?"}`;
+  const funnel = `🔍 <b>Funnel</b>: ${sc.ranked ?? "?"} → S1:${sc.s1 ?? "?"} → S2:${sc.s2 ?? "?"} → S3:${sc.s3 ?? "?"} → S4:${sc.s4 ?? "?"} → final:${sc.s5 ?? "?"}`;
   const byStage = {};
   for (const f of allFiltered) {
     if (f.stage < fromStage) continue;
     const key = `s${f.stage}`;
     if (!byStage[key]) byStage[key] = [];
-    byStage[key].push(`${f.name}: ${f.reason}`);
+    // Build detail line: name + reason + stats
+    const stats = [];
+    if (f.tvl != null) stats.push(`TVL $${typeof f.tvl === 'number' ? (f.tvl >= 1000 ? `${(f.tvl/1000).toFixed(1)}k` : f.tvl.toFixed(0)) : f.tvl}`);
+    if (f.volume != null) stats.push(`vol $${typeof f.volume === 'number' ? (f.volume >= 1000 ? `${(f.volume/1000).toFixed(1)}k` : f.volume.toFixed(0)) : f.volume}`);
+    if (f.fee_tvl_pct != null) stats.push(`fee/tvl ${Number(f.fee_tvl_pct).toFixed(4)}%`);
+    if (f.mcap != null) stats.push(`mcap $${typeof f.mcap === 'number' ? (f.mcap >= 1000 ? `${(f.mcap/1000).toFixed(1)}k` : f.mcap.toFixed(0)) : f.mcap}`);
+    if (f.organic != null) stats.push(`org ${f.organic}%`);
+    if (f.holders != null) stats.push(`hld ${f.holders}`);
+    if (f.age_hours != null) stats.push(`age ${Number(f.age_hours).toFixed(0)}h`);
+    const detailLine = stats.length > 0
+      ? `${f.name}: ${f.reason} (${stats.join(' · ')})`
+      : `${f.name}: ${f.reason}`;
+    byStage[key].push(detailLine);
   }
-  const stageLabels = { s2: "S2 info", s3: "S3 pool", s4: "S4 indicators", s5: "S5 pick" };
+  const stageLabels = { s1: "S1 ranked", s2: "S2 info", s3: "S3 pool", s4: "S4 indicators", s5: "S5 pick" };
   const details = Object.entries(byStage)
-    .map(([key, items]) => `${stageLabels[key] || key}:\n${items.map(r => `  • ${r}`).join("\n")}`)
-    .join("\n");
+    .map(([key, items]) => {
+      const label = stageLabels[key] || (key === "sundefined" ? "Other" : key);
+      return `<b>${label}</b>\n${items.map(r => `  • ${r}`).join("\n")}`;
+    })
+    .join("\n\n");
   return details ? `${funnel}\n\n${details}` : funnel;
 }
 
@@ -1003,7 +1059,9 @@ function computeBinsBelow(volatility) {
   }
   const lo = config.strategy.minBinsBelow;
   const hi = config.strategy.maxBinsBelow;
-  return Math.max(lo, Math.min(hi, Math.round(lo + (parsedVolatility / 5) * (hi - lo))));
+  // INVERSE LOGIC: High vol = tighter range (lo), Low vol = wider range (hi)
+  // Data: vol < 2.0 sweet spot is 46-50, vol >= 2.0 sweet spot is 36-45
+  return Math.max(lo, Math.min(hi, Math.round(hi - (parsedVolatility / 5) * (hi - lo))));
 }
 
 // ═══════════════════════════════════════════
@@ -1040,41 +1098,39 @@ function describeLatestCandidates(limit = 5) {
     const vol = pool.volume_window ?? pool.volume_24h ?? "?";
     const active = pool.active_pct ?? "?";
     const organic = pool.organic_score ?? "?";
-    return `${i + 1}. ${pool.name} | fee/aTVL ${feeTvl}% | vol $${vol} | in-range ${active}% | organic ${organic}`;
+    return `<b>${i + 1}. ${pool.name}</b>\n   Fee  : ${feeTvl}%/TVL\n   Vol  : $${vol}\n   Stat : ${active}% in-range | Org ${organic}`;
   });
   const age = _latestCandidatesAt ? new Date(_latestCandidatesAt).toLocaleString("en-US", { hour12: false }) : "unknown";
-  return `Latest candidates (${_latestCandidates.length}) — updated ${age}\n\n${lines.join("\n")}`;
+  return `🔍 <b>Latest Candidates</b> (${_latestCandidates.length})\n⏱️ ${age}\n\n${lines.join("\n\n")}`;
 }
 
 function formatWalletStatus(wallet, positions) {
   const deployAmount = computeDeployAmount(wallet.sol);
   const hive = isHiveMindEnabled() ? "on" : "off";
   return [
-    `Wallet: ${wallet.sol} SOL ($${wallet.sol_usd})`,
-    `SOL price: $${wallet.sol_price}`,
-    `Open positions: ${positions.total_positions}/${config.risk.maxPositions}`,
-    `Next deploy amount: ${deployAmount} SOL`,
-    `Dry run: ${process.env.DRY_RUN === "true" ? "yes" : "no"}`,
-    `HiveMind: ${hive}`,
+    `🏦 <b>Wallet</b> · $${wallet.sol_usd}`,
+    `SOL   : ${wallet.sol} ($${wallet.sol_price})`,
+    `Pos   : ${positions.total_positions}/${config.risk.maxPositions}`,
+    `Next  : ${deployAmount} SOL`,
+    `Mode  : ${process.env.DRY_RUN === "true" ? "Dry Run" : "Live"}`,
+    `Hive  : ${hive}`,
   ].join("\n");
 }
 
 function formatConfigSnapshot() {
   return [
-    "Config snapshot",
-    "",
-    `Screening source: ${config.screening.source}`,
-    `Strategy: ${config.strategy.strategy} | bins: [${config.strategy.minBinsBelow}–${config.strategy.maxBinsBelow}] (volatility-scaled)`,
-    `Deploy: ${config.management.deployAmountSol} SOL | gasReserve: ${config.management.gasReserve} | maxPositions: ${config.risk.maxPositions}`,
-    `Stop loss: ${config.management.stopLossPct}% | take profit: ${config.management.takeProfitPct}%`,
-    `Trailing: ${config.management.trailingTakeProfit ? "on" : "off"} | trigger ${config.management.trailingTriggerPct}% | drop ${config.management.trailingDropPct}%`,
-    `OOR: ${config.management.outOfRangeWaitMinutes}m | cooldown ${config.management.oorCooldownTriggerCount}x / ${config.management.oorCooldownHours}h`,
-    `Repeat deploy cooldown: ${config.management.repeatDeployCooldownEnabled ? "on" : "off"} | ${config.management.repeatDeployCooldownTriggerCount}x / ${config.management.repeatDeployCooldownHours}h | min fee earned ${config.management.repeatDeployCooldownMinFeeEarnedPct}% | ${config.management.repeatDeployCooldownScope}`,
-    `Yield floor: ${config.management.minFeePerTvl24h}% | min age ${config.management.minAgeBeforeYieldCheck}m`,
-    `Screening: ${config.screening.category} / ${config.screening.timeframe} | TVL ${config.screening.minTvl}-${config.screening.maxTvl}`,
-    `GMGN interval: ${config.gmgn.interval} | OrderBy: ${config.gmgn.orderBy} | Dir: ${config.gmgn.direction}`,
-    `Intervals: manage ${config.schedule.managementIntervalMin}m | screen ${config.schedule.screeningIntervalMin}m`,
-    `HiveMind: ${isHiveMindEnabled() ? "enabled" : "disabled"}${config.hiveMind.agentId ? ` | ${config.hiveMind.agentId}` : ""}`,
+    `⚙️ <b>Config Snapshot</b>`,
+    ``,
+    `Source : ${config.screening.source}`,
+    `Strat  : ${config.strategy.strategy} | Bin [${config.strategy.minBinsBelow}–${config.strategy.maxBinsBelow}]`,
+    `Deploy : ${config.management.deployAmountSol} SOL (Max: ${config.risk.maxPositions})`,
+    `Limits : SL ${config.management.stopLossPct}% | TP ${config.management.takeProfitPct}%`,
+    `Trail  : ${config.management.trailingTakeProfit ? "on" : "off"} (Trig ${config.management.trailingTriggerPct}%, Drop ${config.management.trailingDropPct}%)`,
+    `OOR    : ${config.management.outOfRangeWaitMinutes}m (CD ${config.management.oorCooldownTriggerCount}x/${config.management.oorCooldownHours}h)`,
+    `Yield  : Floor ${config.management.minFeePerTvl24h}% | MinAge ${config.management.minAgeBeforeYieldCheck}m`,
+    `Screen : TVL ${config.screening.minTvl}-${config.screening.maxTvl} | Cat: ${config.screening.category}`,
+    `Cycle  : Mgmt ${config.schedule.managementIntervalMin}m | Scr ${config.schedule.screeningIntervalMin}m`,
+    `Hive   : ${isHiveMindEnabled() ? "on" : "off"}`,
   ].join("\n");
 }
 
@@ -1644,13 +1700,43 @@ async function telegramHandler(msg) {
       const { positions, total_positions } = await getMyPositions({ force: true });
       if (total_positions === 0) { await sendMessage("No open positions."); return; }
       const cur = config.management.solMode ? "◎" : "$";
+      const fmtNum = (v, d = 4) => Number.isFinite(Number(v)) ? Number(v).toFixed(d) : "?";
+      const ageLbl = (m) => {
+        const n = Number(m);
+        if (!Number.isFinite(n)) return "?";
+        const h = Math.floor(n / 60), rem = Math.round(n % 60);
+        return h > 0 ? `${h}h${rem}m` : `${rem}m`;
+      };
+      const posBar = (p, width = 15) => {
+        const lo = Number(p.lower_bin), hi = Number(p.upper_bin), act = Number(p.active_bin);
+        let ratio = 0;
+        if (Number.isFinite(lo) && Number.isFinite(hi) && Number.isFinite(act) && hi !== lo) {
+          ratio = (act - lo) / (hi - lo);
+        }
+        ratio = Math.max(0, Math.min(1, ratio));
+        const filled = Math.round(ratio * width);
+        return { bar: "█".repeat(filled) + "░".repeat(width - filled), pct: Math.round(ratio * 100) };
+      };
       const lines = positions.map((p, i) => {
-        const pnl = p.pnl_usd >= 0 ? `+${cur}${p.pnl_usd}` : `-${cur}${Math.abs(p.pnl_usd)}`;
-        const age = p.age_minutes != null ? `${p.age_minutes}m` : "?";
-        const oor = !p.in_range ? " ⚠️OOR" : "";
-        return `${i + 1}. ${p.pair} | ${cur}${p.total_value_usd} | PnL: ${pnl} | fees: ${cur}${p.unclaimed_fees_usd} | ${age}${oor}`;
+        const pnlSign = p.pnl_usd >= 0 ? "+" : "-";
+        const pnlAbs = `${pnlSign}${cur}${fmtNum(Math.abs(p.pnl_usd))}`;
+        const pctRaw = Number(p.pnl_pct);
+        const pctStr = Number.isFinite(pctRaw) ? `${pctRaw >= 0 ? "+" : ""}${pctRaw.toFixed(2)}%` : "?%";
+        const pnlEmoji = (Number(p.pnl_usd) || 0) >= 0 ? "🟢" : "🔴";
+        const status = p.in_range ? `✅ In Range` : `⚠️ OOR ${ageLbl(p.minutes_out_of_range ?? 0)}`;
+        const { bar, pct } = posBar(p);
+        const lo = p.lower_bin ?? "?", hi = p.upper_bin ?? "?", act = p.active_bin ?? "?";
+        const feeTvl = Number.isFinite(Number(p.fee_per_tvl_24h)) ? `${Number(p.fee_per_tvl_24h).toFixed(2)}%` : "?%";
+        return [
+          `<b>${i + 1}. ${p.pair}</b> · ${cur}${fmtNum(p.total_value_usd)} · ⏱️ ${ageLbl(p.age_minutes)}`,
+          `   PnL  : ${pnlAbs} (${pctStr}) ${pnlEmoji}`,
+          `   Fee  : ${cur}${fmtNum(p.unclaimed_fees_usd)}`,
+          `   Bin  : ${lo} ← ${act} → ${hi}`,
+          `   Bar  : [${bar}] ${pct}%`,
+          `   Stat : ${status} | 🔥 ${feeTvl} fee/tvl`,
+        ].join("\n");
       });
-      await sendMessage(`📊 Open Positions (${total_positions}):\n\n${lines.join("\n")}\n\n/close <n> to close | /set <n> <note> to set instruction`);
+      await sendMessage(`📊 Open Positions (${total_positions}):\n\n${lines.join("\n\n")}\n\n/close <n> to close | /set <n> <note> to set instruction`);
     } catch (e) { await sendMessage(`Error: ${e.message}`).catch(() => {}); }
     return;
   }
@@ -1662,15 +1748,20 @@ async function telegramHandler(msg) {
       const { positions } = await getMyPositions({ force: true });
       if (idx < 0 || idx >= positions.length) { await sendMessage("Invalid number. Use /positions first."); return; }
       const pos = positions[idx];
+      const cur = config.management.solMode ? "◎" : "$";
+      const fmtN = (v, d=4) => Number.isFinite(Number(v)) ? Number(v).toFixed(d) : "?";
+      const aLbl = (m) => { const n=Number(m); if(!Number.isFinite(n)) return "?"; const h=Math.floor(n/60),r=Math.round(n%60); return h>0?`${h}h${r}m`:`${r}m`; };
+      const status = pos.in_range ? `✅ In Range` : `⚠️ OOR ${aLbl(pos.minutes_out_of_range ?? 0)}`;
       await sendMessage([
-        `${idx + 1}. ${pos.pair}`,
-        `Pool: ${pos.pool}`,
-        `Position: ${pos.position}`,
-        `Range: ${pos.lower_bin} → ${pos.upper_bin} | active ${pos.active_bin}`,
-        `PnL: ${pos.pnl_pct ?? "?"}% | fees: ${config.management.solMode ? "◎" : "$"}${pos.unclaimed_fees_usd ?? "?"}`,
-        `Value: ${config.management.solMode ? "◎" : "$"}${pos.total_value_usd ?? "?"}`,
-        `Age: ${pos.age_minutes ?? "?"}m | ${pos.in_range ? "IN RANGE" : `OOR ${pos.minutes_out_of_range ?? 0}m`}`,
-        pos.instruction ? `Note: ${pos.instruction}` : null,
+        `<b>${idx+1}. ${pos.pair}</b> — ${status}`,
+        `Pool  : ${pos.pool}`,
+        `Pos   : ${pos.position}`,
+        `Value : ${cur}${fmtN(pos.total_value_usd)}`,
+        `PnL   : ${cur}${fmtN(Math.abs(pos.pnl_usd??0))} (${pos.pnl_pct??"?"}%)`,
+        `Fee   : ${cur}${fmtN(pos.unclaimed_fees_usd)}`,
+        `Bin   : ${pos.lower_bin??"?"} ← ${pos.active_bin??"?"} → ${pos.upper_bin?? "?"}`,
+        `Age   : ${aLbl(pos.age_minutes)}`,
+        pos.instruction ? `Note  : ${pos.instruction}` : null,
       ].filter(Boolean).join("\n"));
     } catch (e) {
       await sendMessage(`Error: ${e.message}`).catch(() => {});
@@ -1685,12 +1776,16 @@ async function telegramHandler(msg) {
       const { positions } = await getMyPositions({ force: true });
       if (idx < 0 || idx >= positions.length) { await sendMessage("Invalid number. Use /positions first."); return; }
       const pos = positions[idx];
-      await sendMessage(`Closing ${pos.pair}...`);
+      await sendMessage(`⏳ Closing <b>${pos.pair}</b>...`);
       const result = await closePosition({ position_address: pos.position });
       if (result.success) {
         const closeTxs = result.close_txs?.length ? result.close_txs : result.txs;
-        const claimNote = result.claim_txs?.length ? `\nClaim txs: ${result.claim_txs.join(", ")}` : "";
-        await sendMessage(`✅ Closed ${pos.pair}\nPnL: ${config.management.solMode ? "◎" : "$"}${result.pnl_usd ?? "?"} | close txs: ${closeTxs?.join(", ") || "n/a"}${claimNote}`);
+        const claimNote = result.claim_txs?.length ? `\nClaim : ${result.claim_txs.join(", ")}` : "";
+        await sendMessage([
+          `✅ <b>Closed ${pos.pair}</b>`,
+          `PnL   : ${config.management.solMode ? "◎" : "$"}${result.pnl_usd ?? "?"}`,
+          `Tx    : ${closeTxs?.join(", ") || "n/a"}${claimNote}`,
+        ].join("\n"));
       } else {
         await sendMessage(`❌ Close failed: ${JSON.stringify(result)}`);
       }
@@ -1702,17 +1797,18 @@ async function telegramHandler(msg) {
     try {
       const { positions } = await getMyPositions({ force: true });
       if (!positions.length) { await sendMessage("No open positions."); return; }
-      await sendMessage(`Closing ${positions.length} position(s)...`);
+      await sendMessage(`⏳ Closing <b>${positions.length} position(s)</b>...`);
       const results = [];
       for (const pos of positions) {
         try {
           const result = await closePosition({ position_address: pos.position });
-          results.push(`${pos.pair}: ${result.success ? "closed" : `failed (${result.error || "unknown"})`}`);
+          const tag = result.success ? "✅" : "❌";
+          results.push(`${tag} ${pos.pair}: ${result.success ? "closed" : result.error || "failed"}`);
         } catch (error) {
-          results.push(`${pos.pair}: failed (${error.message})`);
+          results.push(`❌ ${pos.pair}: ${error.message}`);
         }
       }
-      await sendMessage(`Close-all finished.\n\n${results.join("\n")}`).catch(() => {});
+      await sendMessage(`<b>Close-all done</b>\n\n${results.join("\n")}`).catch(() => {});
     } catch (e) {
       await sendMessage(`Error: ${e.message}`).catch(() => {});
     }
@@ -1728,7 +1824,7 @@ async function telegramHandler(msg) {
       if (idx < 0 || idx >= positions.length) { await sendMessage("Invalid number. Use /positions first."); return; }
       const pos = positions[idx];
       setPositionInstruction(pos.position, note);
-      await sendMessage(`✅ Note set for ${pos.pair}:\n"${note}"`);
+      await sendMessage(`✅ Note set for <b>${pos.pair}</b>:\n_"${note}"_`);
     } catch (e) { await sendMessage(`Error: ${e.message}`).catch(() => {}); }
     return;
   }
@@ -1773,15 +1869,15 @@ async function telegramHandler(msg) {
       const idx = parseInt(deployMatch[1]) - 1;
       const { candidate, result, deployAmount, binsBelow } = await deployLatestCandidate(idx);
       const coverage = result.range_coverage
-        ? `Range: ${fmtPct(result.range_coverage.downside_pct)} downside | ${fmtPct(result.range_coverage.upside_pct)} upside`
-        : `Strategy: ${config.strategy.strategy} | binsBelow: ${binsBelow}`;
+        ? `Cover  : ${fmtPct(result.range_coverage.downside_pct)} downside | ${fmtPct(result.range_coverage.upside_pct)} upside`
+        : `Strat  : ${config.strategy.strategy} | BinsBelow: ${binsBelow}`;
       await sendMessage([
-        `✅ Deployed ${candidate.name}`,
-        `Pool: ${candidate.pool}`,
-        `Amount: ${deployAmount} SOL`,
+        `✅ <b>Deployed ${candidate.name}</b>`,
+        `Pool   : ${candidate.pool}`,
+        `Amount : ${deployAmount} SOL`,
         coverage,
-        `Position: ${result.position || "n/a"}`,
-        result.txs?.length ? `Tx: ${result.txs[0]}` : null,
+        `Pos    : ${result.position || "n/a"}`,
+        result.txs?.length ? `Tx     : ${result.txs[0]}` : null,
       ].filter(Boolean).join("\n")).catch(() => {});
     } catch (e) {
       await sendMessage(`Error: ${e.message}`).catch(() => {});
@@ -1814,7 +1910,11 @@ async function telegramHandler(msg) {
       const enabled = isHiveMindEnabled();
       const agentId = ensureAgentId();
       if (!enabled) {
-        await sendMessage(`HiveMind: disabled\nAgent ID: ${agentId}\nSet hiveMindApiKey to connect.`).catch(() => {});
+        await sendMessage([
+          `🐝 <b>HiveMind</b> : disabled`,
+          `Agent  : ${agentId}`,
+          `_Set hiveMindApiKey to connect_`,
+        ].join("\n")).catch(() => {});
         return;
       }
       const isManualPull = text === "/hive pull";
@@ -1825,15 +1925,15 @@ async function telegramHandler(msg) {
         (pullMode === "auto" || isManualPull) ? pullHiveMindPresets() : Promise.resolve(null),
       ]);
       await sendMessage([
-        "HiveMind: enabled",
-        `Agent ID: ${agentId}`,
-        `URL: ${config.hiveMind.url}`,
-        `Pull mode: ${pullMode}`,
-        `Register: ${registerResult ? "ok" : "warn"}`,
-        `Shared lessons: ${Array.isArray(lessons) ? lessons.length : (pullMode === "manual" ? "manual" : 0)}`,
+        `🐝 <b>HiveMind</b> : enabled`,
+        `Agent  : ${agentId}`,
+        `URL    : ${config.hiveMind.url}`,
+        `Pull   : ${pullMode}`,
+        `Reg    : ${registerResult ? "✅ ok" : "⚠️ warn"}`,
+        `Lessons: ${Array.isArray(lessons) ? lessons.length : (pullMode === "manual" ? "manual" : 0)}`,
         `Presets: ${Array.isArray(presets) ? presets.length : (pullMode === "manual" ? "manual" : 0)}`,
-        isManualPull ? "Manual pull: completed" : null,
-      ].join("\n")).catch(() => {});
+        isManualPull ? "📌 Manual pull completed" : null,
+      ].filter(Boolean).join("\n")).catch(() => {});
     } catch (e) {
       await sendMessage(`HiveMind error: ${e.message}`).catch(() => {});
     }

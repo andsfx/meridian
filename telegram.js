@@ -146,7 +146,8 @@ async function postTelegramRaw(method, body) {
 
 export async function sendMessage(text) {
   if (!TOKEN || !chatId) return;
-  return postTelegram("sendMessage", { text: String(text).slice(0, 4096) });
+  const html = String(text).slice(0, 4096);
+  return postTelegram("sendMessage", { text: html, parse_mode: "HTML" });
 }
 
 export async function sendMessageWithButtons(text, inlineKeyboard) {
@@ -167,6 +168,7 @@ export async function editMessage(text, messageId) {
   return postTelegram("editMessageText", {
     message_id: messageId,
     text: String(text).slice(0, 4096),
+    parse_mode: "HTML",
   });
 }
 
@@ -301,7 +303,19 @@ export async function createLiveMessage(title, intro = "Starting...") {
       state.messageId = sent?.result?.message_id ?? null;
       return;
     }
-    await editMessage(text, state.messageId);
+    try {
+      await editMessage(text, state.messageId);
+    } catch (err) {
+      // "message is not modified" — content unchanged. Send fresh message instead.
+      if (err?.message?.includes("not modified") || String(err).includes("not modified")) {
+        const sent = await sendMessage(text);
+        if (sent?.result?.message_id) {
+          // Delete the stale old message so Telegram doesn't accumulate duplicates
+          try { await postTelegram("deleteMessage", { message_id: state.messageId }); } catch (_e) {}
+          state.messageId = sent.result.message_id;
+        }
+      }
+    }
   }
 
   function scheduleFlush(delay = 300) {

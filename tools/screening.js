@@ -544,8 +544,9 @@ export async function discoverPools({
  */
 export async function getTopCandidates({ limit = 10 } = {}) {
   const { config } = await import("../config.js");
-  const source = String(config.screening.source || "meteora").toLowerCase();
-  if (!["meteora", "gmgn"].includes(source)) {
+  const rawSource = String(config.screening.source || "meteora").toLowerCase();
+  const source = rawSource === "both" ? "gmgn" : rawSource; // fallback: both → gmgn
+  if (source !== "meteora" && source !== "gmgn") {
     throw new Error(`Invalid screeningSource: ${config.screening.source}. Use meteora or gmgn.`);
   }
   const discovery = source === "gmgn"
@@ -560,12 +561,12 @@ export async function getTopCandidates({ limit = 10 } = {}) {
     pools = pools.filter((p) => {
       if (isBlacklisted(p.base?.mint)) {
         log("blacklist", `Filtered blacklisted token ${p.base?.symbol} (${p.base?.mint?.slice(0, 8)})`);
-        pushFilteredReason(filteredOut, p, "blacklisted token");
+        pushFilteredReason(filteredOut, p, "blacklisted token", 5);
         return false;
       }
       if (p.dev && isDevBlocked(p.dev)) {
         log("dev_blocklist", `Filtered blocked deployer ${p.dev?.slice(0, 8)} token ${p.base?.symbol}`);
-        pushFilteredReason(filteredOut, p, "blocked deployer");
+        pushFilteredReason(filteredOut, p, "blocked deployer", 5);
         return false;
       }
       return true;
@@ -588,38 +589,38 @@ export async function getTopCandidates({ limit = 10 } = {}) {
     .filter((p) => {
       const tvl = Number(p.tvl ?? p.active_tvl ?? 0);
       if (Number.isFinite(minTvl) && minTvl > 0 && tvl < minTvl) {
-        pushFilteredReason(filteredOut, p, `TVL $${tvl} below minTvl $${minTvl}`);
+        pushFilteredReason(filteredOut, p, `TVL $${tvl} below minTvl $${minTvl}`, 5);
         return false;
       }
       if (Number.isFinite(maxTvl) && maxTvl > 0 && tvl > maxTvl) {
-        pushFilteredReason(filteredOut, p, `TVL $${tvl} above maxTvl $${maxTvl}`);
+        pushFilteredReason(filteredOut, p, `TVL $${tvl} above maxTvl $${maxTvl}`, 5);
         return false;
       }
       const feeActiveTvlRatio = Number(p.fee_active_tvl_ratio);
       if (Number.isFinite(minFeeActiveTvlRatio) && minFeeActiveTvlRatio > 0 && (!Number.isFinite(feeActiveTvlRatio) || feeActiveTvlRatio < minFeeActiveTvlRatio)) {
-        pushFilteredReason(filteredOut, p, `fee/active-TVL ${Number.isFinite(feeActiveTvlRatio) ? feeActiveTvlRatio : "unknown"} below minFeeActiveTvlRatio ${minFeeActiveTvlRatio}`);
+        pushFilteredReason(filteredOut, p, `fee/active-TVL ${Number.isFinite(feeActiveTvlRatio) ? feeActiveTvlRatio : "unknown"} below minFeeActiveTvlRatio ${minFeeActiveTvlRatio}`, 5);
         return false;
       }
       if (!isUsableVolatility(p.volatility)) {
-        pushFilteredReason(filteredOut, p, `volatility ${p.volatility ?? "unknown"} unusable`);
+        pushFilteredReason(filteredOut, p, `volatility ${p.volatility ?? "unknown"} unusable`, 5);
         return false;
       }
       if (occupiedPools.has(p.pool)) {
-        pushFilteredReason(filteredOut, p, "already have an open position in this pool");
+        pushFilteredReason(filteredOut, p, "already have an open position in this pool", 5);
         return false;
       }
       if (occupiedMints.has(p.base?.mint)) {
-        pushFilteredReason(filteredOut, p, "already holding this base token in another pool");
+        pushFilteredReason(filteredOut, p, "already holding this base token in another pool", 5);
         return false;
       }
       if (isPoolOnCooldown(p.pool)) {
         log("screening", `Filtered cooldown pool ${p.name} (${p.pool.slice(0, 8)})`);
-        pushFilteredReason(filteredOut, p, "pool cooldown active");
+        pushFilteredReason(filteredOut, p, "pool cooldown active", 5);
         return false;
       }
       if (isBaseMintOnCooldown(p.base?.mint)) {
         log("screening", `Filtered cooldown token ${p.base?.symbol} (${p.base?.mint?.slice(0, 8)})`);
-        pushFilteredReason(filteredOut, p, "token cooldown active");
+        pushFilteredReason(filteredOut, p, "token cooldown active", 5);
         return false;
       }
       return true;
@@ -632,7 +633,7 @@ export async function getTopCandidates({ limit = 10 } = {}) {
     if (config.screening.blockPvpSymbols) {
       const before = eligible.length;
       const pvpRemoved = eligible.filter((p) => p.is_pvp);
-      pvpRemoved.forEach((p) => pushFilteredReason(filteredOut, p, "PVP hard filter"));
+      pvpRemoved.forEach((p) => pushFilteredReason(filteredOut, p, "PVP hard filter", 5));
       eligible.splice(0, eligible.length, ...eligible.filter((p) => !p.is_pvp));
       if (eligible.length < before) {
         log("screening", `PVP hard filter removed ${before - eligible.length} pool(s)`);
@@ -646,7 +647,7 @@ export async function getTopCandidates({ limit = 10 } = {}) {
     const filtered = eligible.filter((p) => {
       if (p.dev && isDevBlocked(p.dev)) {
         log("dev_blocklist", `Filtered blocked deployer ${p.dev.slice(0, 8)} token ${p.base?.symbol}`);
-        pushFilteredReason(filteredOut, p, "blocked deployer");
+        pushFilteredReason(filteredOut, p, "blocked deployer", 5);
         return false;
       }
       return true;
@@ -684,7 +685,7 @@ export async function getTopCandidates({ limit = 10 } = {}) {
       const confirmation = confirmationByPool.get(pool.pool);
       pool.indicator_confirmation = confirmation || null;
       if (!confirmation || confirmation.confirmed) return true;
-      pushFilteredReason(filteredOut, pool, `indicator reject: ${confirmation.reason}`);
+      pushFilteredReason(filteredOut, pool, `indicator reject: ${confirmation.reason}`, 4);
       log("screening", `Indicator rejected ${pool.name} (${pool.pool.slice(0, 8)}): ${confirmation.reason}`);
       return false;
     });
@@ -802,10 +803,18 @@ function fix(n, decimals) {
   return value != null ? Number(value.toFixed(decimals)) : null;
 }
 
-function pushFilteredReason(list, pool, reason) {
+function pushFilteredReason(list, pool, reason, stage) {
   if (!list || !pool) return;
   list.push({
     name: pool.name || `${pool.base?.symbol || "?"}-${pool.quote?.symbol || "?"}`,
     reason,
+    stage: stage ?? undefined,
+    tvl: pool.tvl_usd ?? pool.active_tvl_usd ?? pool.tvl ?? null,
+    volume: pool.volume_24h_usd ?? pool.volume_usd ?? null,
+    fee_tvl_pct: pool.fee_active_tvl_ratio ?? pool.fee_tvl_pct ?? null,
+    mcap: pool.mcap_usd ?? pool.market_cap_usd ?? null,
+    organic: pool.token_x?.organic_score ?? pool.organic ?? null,
+    holders: pool.token_x?.holder_count ?? pool.holders ?? null,
+    age_hours: pool.token_x?.age_hours ?? pool.age_hours ?? null,
   });
 }
