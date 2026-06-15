@@ -657,7 +657,7 @@ export async function runScreeningCycle({ silent = false } = {}) {
           volume:                pool.volume_window         ?? null,
           mcap:                  pool.mcap                  ?? null,
           holder_count:          ti?.holders                ?? null,
-          smart_wallets_present: (sw?.in_pool?.length ?? 0) > 0,
+          smart_wallets_category: sw?.dominant_strategy || "none",
           narrative_quality:     n?.narrative ? "present" : "absent",
           volatility:            pool.volatility            ?? null,
         });
@@ -1030,6 +1030,8 @@ function buildGmgnFunnelReport(stageCounts, allFiltered = [], { fromStage = 1 } 
 
 function getLoneCandidateSkipReason({ pool, sw, n, ti } = {}) {
   if (!pool) return "missing candidate data";
+  // Smart wallet score override: strong conviction beats weak fundamentals
+  if (sw?.meets_threshold) return null;
   const smartWalletCount = Math.max(sw?.in_pool?.length ?? 0, Number(pool.gmgn_smart_wallets ?? 0) || 0);
   const tokenInfo = ti || {};
   const hasNarrative = !!n?.narrative;
@@ -1575,7 +1577,7 @@ async function deployLatestCandidate(index) {
   const result = await executeTool("deploy_position", {
     pool_address: candidate.pool,
     amount_y: deployAmount,
-    strategy: config.strategy.strategy,
+    strategy: context.sw?.dominant_strategy || config.strategy.strategy,
     bins_below: binsBelow,
     bins_above: 0,
     pool_name: candidate.name,

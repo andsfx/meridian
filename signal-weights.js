@@ -46,11 +46,10 @@ const HIGHER_IS_BETTER = new Set([
   "hive_consensus",
 ]);
 
-// Boolean signals — compared by win rate when present vs absent
-const BOOLEAN_SIGNALS = new Set(["smart_wallets_present"]);
+// Categorical signals: value is a string category (e.g., 'agent_meridian', 'kol')
+const CATEGORICAL_SIGNALS = new Set(["narrative_quality", "smart_wallets_category"]);
 
-// Categorical signals — compared by win rate across categories
-const CATEGORICAL_SIGNALS = new Set(["narrative_quality"]);
+
 
 // ─── Persistence ─────────────────────────────────────────────────
 
@@ -206,8 +205,11 @@ export function recalculateWeights(perfData, cfg = {}) {
 // ─── Lift Computation ────────────────────────────────────────────
 
 function computeLift(signal, wins, losses, minSamples) {
-  if (BOOLEAN_SIGNALS.has(signal))      return computeBooleanLift(signal, wins, losses, minSamples);
-  if (CATEGORICAL_SIGNALS.has(signal))  return computeCategoricalLift(signal, wins, losses, minSamples);
+  if (BOOLEAN_SIGNALS.has(signal))
+    return computeBooleanLift(signal, wins, losses, minSamples);
+  if (CATEGORICAL_SIGNALS.has(signal))
+    return computeCategoricalLift(signal, wins, losses, minSamples);
+
   return computeNumericLift(signal, wins, losses, minSamples);
 }
 

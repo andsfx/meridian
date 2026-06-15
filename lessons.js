@@ -22,7 +22,7 @@ const PERFORMANCE_SIGNAL_FIELDS = [
   "volume",
   "mcap",
   "holder_count",
-  "smart_wallets_present",
+  "smart_wallets_category",
   "narrative_quality",
   "study_win_rate",
   "hive_consensus",
