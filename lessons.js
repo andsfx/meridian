@@ -497,7 +497,40 @@ export function evolveThresholds(perfData, config) {
     }
   }
 
-  // ── Hold-Time Learning (audit P2-C) ──────────────────────────
+  // ── 4. minBinStep ───────────────────────────────────────────────
+  // Evolve based on volatility and performance.
+  // Lower minBinStep for high volatility pools if they perform well.
+  // Raise minBinStep for low volatility pools if they underperform.
+  {
+    const current = config.screening.minBinStep;
+    
+    // Group by volatility tier
+    const highVol = windowData.filter(p => p.volatility >= 6);
+    const lowVol = windowData.filter(p => p.volatility < 3);
+    
+    // High volatility winners with low bin_step
+    const highVolWinnersLowBin = highVol.filter(p => p.pnl_pct > 0 && p.bin_step < current);
+    if (highVolWinnersLowBin.length >= 2) {
+      // Find the highest performing bin_step below current
+      const bestBinStep = Math.max(...highVolWinnersLowBin.map(p => p.bin_step));
+      const target = Math.max(bestBinStep, 80); // Don't go below 80
+      if (target < current) {
+        changes.minBinStep = target;
+        rationale.minBinStep = `High volatility winners performed well at bin_step ${bestBinStep} — lowered from ${current} → ${target}`;
+      }
+    }
+    
+    // Low volatility losers with current bin_step
+    const lowVolLosers = lowVol.filter(p => p.pnl_pct < 0 && p.bin_step === current);
+    if (lowVolLosers.length >= 2) {
+      // Raise minBinStep to avoid low volatility pools
+      const target = Math.min(current + 10, 125); // Don't exceed 125
+      if (target > current) {
+        changes.minBinStep = target;
+        rationale.minBinStep = `Low volatility pools underperformed at bin_step ${current} — raised to ${target}`;
+      }
+    }
+  }
   // Strongest signal in 649-trade audit: 82.6% winrate at 240m+ hold.
   // Evolve outOfRangeWaitMinutes based on hold-bucket winrate pattern.
   {
