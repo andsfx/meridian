@@ -585,15 +585,29 @@ export function evolveThresholds(perfData, config) {
   const recentWinners = recentClosed.filter((p) => (p.peak_pnl_pct ?? 0) > 5);
   const recentWinRate = recentClosed.length > 0 ? recentWinners.length / recentClosed.length : null;
 
-  // Helper: clamp + apply ±20% rate limit per evolution step
+  // Helper: clamp + apply ±10% rate limit per evolution step + 24h cooldown
   const adjustGate = (key, currentRaw, factor, floor, ceiling, reason) => {
     const current = Number(currentRaw);
     if (!Number.isFinite(current) || current <= 0) return null;
+    
+    // Check cooldown — only evolve once per day
+    const lastEvolveKey = `lastEvolve_${key}`;
+    const now = Date.now();
+    const lastEvolve = config[lastEvolveKey] || 0;
+    if (now - lastEvolve < 24 * 60 * 60 * 1000) {
+      return null; // Cooldown active
+    }
+    
     const target = Math.round(current * factor);
     const newVal = Math.max(floor, Math.min(ceiling, target));
     if (newVal === current) return null;
+    
     changes[key] = newVal;
     rationale[key] = `${reason} (${current} → ${newVal})`;
+    
+    // Record last evolve time
+    changes[lastEvolveKey] = now;
+    
     return newVal;
   };
 

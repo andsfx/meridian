@@ -1,4 +1,8 @@
 import fs from "fs";
+import dotenv from "dotenv";
+
+// Load .env before anything else
+dotenv.config();
 import { REPO_ROOT, repoPath } from "./repo-root.js";
 import { getScreeningDefaultsForTimeframe, normalizeTimeframe, scaleScreeningToTimeframe, TIMEFRAME_SCREENING_SCALES } from "./screening-scales.js";
 
@@ -93,8 +97,10 @@ export const config = {
     minHolders:        u.minHolders        ?? 500,
     minMcap:           u.minMcap           ?? 150_000,
     maxMcap:           u.maxMcap           ?? 10_000_000,
-    minBinStep:        u.minBinStep        ?? 80,
+    minBinStep:        u.screening?.minBinStep ?? u.minBinStep ?? 80,
     maxBinStep:        u.maxBinStep        ?? 125,
+    // P5 telemetry: price change validator (disabled until data collected)
+    rule0dPriceChange: u.rule0dPriceChange ?? { enabled: false },
     timeframe:         u.timeframe         ?? "5m",
     category:          u.category          ?? "trending",
     minTokenFeesSol:   u.minTokenFeesSol   ?? 30,  // global fees paid (priority+jito tips). below = bundled/scam
