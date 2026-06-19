@@ -190,6 +190,10 @@ async function validateDeployPoolThresholds(args) {
     entry_tvl: tvl,
     entry_volume: numberOrNull(detail?.volume),
     entry_holders: numberOrNull(detail?.base_token_holders ?? detail?.token_x?.holders),
+    // P5 telemetry: price change at deploy time (30m timeframe, Meteora API)
+    price_change_pct_at_deploy: numberOrNull(detail?.pool_price_change_pct),
+    volume_change_pct_at_deploy: numberOrNull(detail?.volume_change_pct),
+    tvl_change_pct_at_deploy: null, // not yet available from Meteora API
   };
 
   return { pass: true, entryMarketData };

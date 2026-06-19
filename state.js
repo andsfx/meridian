@@ -73,6 +73,10 @@ export function trackPosition({
   entry_tvl = null,
   entry_volume = null,
   entry_holders = null,
+  // P5 telemetry: price/volume change at deploy (30m timeframe Meteora)
+  price_change_pct_at_deploy = null,
+  volume_change_pct_at_deploy = null,
+  tvl_change_pct_at_deploy = null,
 }) {
   const state = load();
   state.positions[position] = {
@@ -94,6 +98,10 @@ export function trackPosition({
     entry_tvl,
     entry_volume,
     entry_holders,
+    // P5 telemetry: price/volume change at deploy time
+    price_change_pct_at_deploy,
+    volume_change_pct_at_deploy,
+    tvl_change_pct_at_deploy,
     signal_snapshot: signal_snapshot || null,
     deployed_at: new Date().toISOString(),
     out_of_range_since: null,

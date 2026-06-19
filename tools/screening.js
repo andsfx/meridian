@@ -2,14 +2,32 @@ import { config } from "../config.js";
 import { isBlacklisted } from "../token-blacklist.js";
 import { isDevBlocked, getBlockedDevs } from "../dev-blocklist.js";
 import { log } from "../logger.js";
-import { isBaseMintOnCooldown, isPoolOnCooldown } from "../pool-memory.js";
+import { isBaseMintOnCooldown, isPoolOnCooldown, getPoolMemory } from "../pool-memory.js";
 import { confirmIndicatorPreset } from "./chart-indicators.js";
 import { discoverGmgnPools } from "./gmgn.js";
+import { checkSmartWalletsOnPool } from "../smart-wallets.js";
+import { normalizeTimeframe } from "../screening-scales.js";
+
+// P4: normalize user-config timeframe to single string for the API.
+// user-config can be a string OR array like ["30m","1h"]. The pool discovery
+// API only accepts one timeframe per call — pick the shortest (most fee-active).
+function pickApiTimeframe(tf) {
+  if (Array.isArray(tf)) {
+    const normalized = tf.map((t) => normalizeTimeframe(t));
+    const order = ["5m","30m","1h","2h","4h","12h","24h"];
+    return order.find((t) => normalized.includes(t)) || "4h";
+  }
+  return normalizeTimeframe(tf);
+}
 
 const DATAPI_JUP = "https://datapi.jup.ag/v1";
 
 const POOL_DISCOVERY_BASE = "https://pool-discovery-api.datapi.meteora.ag";
-const MIN_VOLATILITY_TIMEFRAME = "30m";
+// P2-VolTimeframe (kanban): raise fallback from 30m→1h. 1h volatility is non-zero for
+// ~5/6 fee-surviving pools (T1 audit: RIV-SOL 0→2.78, WOC-SOL 0→2.35, etc.).
+// Triggers extra fetch only when sourceTimeframe < "1h" (current API call uses 30m → always triggers).
+// Cost: ~100 extra DLMM calls/cycle. Acceptable vs. 0-deploys ongoing.
+const MIN_VOLATILITY_TIMEFRAME = "1h";
 const TIMEFRAME_MINUTES = {
   "5m": 5,
   "30m": 30,
@@ -202,14 +220,15 @@ async function applyVolatilityTimeframe(rawPools, sourceTimeframe) {
   if (sourceTimeframe === volatilityTimeframe) return rawPools;
 
   const uniquePoolAddresses = [...new Set(rawPools.map((pool) => pool?.pool_address).filter(Boolean))];
+  const FIELDS = ["volume", "fee", "active_tvl", "tvl", "volatility", "fee_active_tvl_ratio"];
   const longResults = await Promise.allSettled(
     uniquePoolAddresses.map((poolAddress) =>
       fetchPoolDiscoveryDetail({ poolAddress, timeframe: volatilityTimeframe })
-        .then((pool) => ({
-          poolAddress,
-          volatility: numeric(pool?.volatility),
-          volume: numeric(pool?.volume),
-        }))
+        .then((pool) => {
+          const out = { poolAddress };
+          for (const f of FIELDS) out[f] = numeric(pool?.[f]);
+          return out;
+        })
     )
   );
 
@@ -224,12 +243,16 @@ async function applyVolatilityTimeframe(rawPools, sourceTimeframe) {
     const metrics = metricsByPool.get(pool.pool_address);
     if (!metrics) continue;
 
-    pool[`volume_${volatilityTimeframe}`] = metrics.volume;
-    pool[`volatility_${volatilityTimeframe}`] = metrics.volatility;
-
+    for (const f of FIELDS) {
+      pool[`${f}_${volatilityTimeframe}`] = metrics[f];
+    }
     // Use longer-timeframe values as the canonical ones for filtering
     if (metrics.volatility != null) pool.volatility = metrics.volatility;
     if (metrics.volume != null) pool.volume = metrics.volume;
+    if (metrics.fee_active_tvl_ratio != null) pool.fee_active_tvl_ratio = metrics.fee_active_tvl_ratio;
+    if (metrics.active_tvl != null) pool.active_tvl = metrics.active_tvl;
+    if (metrics.tvl != null) pool.tvl = metrics.tvl;
+    if (metrics.fee != null) pool.fee = metrics.fee;
   }
 
   return rawPools;
@@ -300,51 +323,60 @@ async function findRivalPool(mint) {
 }
 
 async function enrichPvpRisk(pools) {
-  const shortlist = [...pools]
-    .sort((a, b) => scoreCandidate(b) - scoreCandidate(a))
-    .slice(0, PVP_SHORTLIST_LIMIT);
+  try {
+    const shortlist = [...pools]
+      .sort((a, b) => scoreCandidate(b) - scoreCandidate(a))
+      .slice(0, PVP_SHORTLIST_LIMIT);
 
-  if (shortlist.length === 0) return;
+    if (shortlist.length === 0) return;
 
-  const symbolCache = new Map();
+    const symbolCache = new Map();
 
-  await Promise.all(shortlist.map(async (pool) => {
-    const symbol = normalizeSymbol(pool.base?.symbol);
-    const ownMint = pool.base?.mint;
-    if (!symbol || !ownMint) return;
+    await Promise.all(shortlist.map(async (pool) => {
+      const symbol = normalizeSymbol(pool.base?.symbol);
+      const ownMint = pool.base?.mint;
+      if (!symbol || !ownMint) return;
 
-    let assets = symbolCache.get(symbol);
-    if (!assets) {
-      assets = await searchAssetsBySymbol(symbol).catch(() => []);
-      symbolCache.set(symbol, assets);
-    }
+      let assets = symbolCache.get(symbol);
+      if (!assets) {
+        assets = await searchAssetsBySymbol(symbol).catch(() => []);
+        symbolCache.set(symbol, assets);
+      }
 
-    const rivalAssets = assets
-      .filter((asset) => normalizeSymbol(asset?.symbol) === symbol && asset?.id && asset.id !== ownMint)
-      .sort((a, b) => Number(b?.liquidity || 0) - Number(a?.liquidity || 0))
-      .slice(0, PVP_RIVAL_LIMIT);
+      const rivalAssets = assets
+        .filter((asset) => normalizeSymbol(asset?.symbol) === symbol && asset?.id && asset.id !== ownMint)
+        .sort((a, b) => Number(b?.liquidity || 0) - Number(a?.liquidity || 0))
+        .slice(0, PVP_RIVAL_LIMIT);
 
-    for (const rival of rivalAssets) {
-      const rivalHolders = Number(rival?.holderCount || 0);
-      const rivalFees = Number(rival?.fees || 0);
-      if (rivalHolders < PVP_MIN_HOLDERS || rivalFees < PVP_MIN_GLOBAL_FEES_SOL) continue;
+      for (const rival of rivalAssets) {
+        const rivalHolders = Number(rival?.holderCount || 0);
+        const rivalFees = Number(rival?.fees || 0);
+        if (rivalHolders < PVP_MIN_HOLDERS || rivalFees < PVP_MIN_GLOBAL_FEES_SOL) continue;
 
-      const rivalPool = await findRivalPool(rival.id).catch(() => null);
-      if (!rivalPool) continue;
+        const rivalPool = await findRivalPool(rival.id).catch(() => null);
+        if (!rivalPool) continue;
 
-      pool.is_pvp = true;
-      pool.pvp_risk = "high";
-      pool.pvp_symbol = pool.base?.symbol || symbol;
-      pool.pvp_rival_name = rival?.name || pool.pvp_symbol;
-      pool.pvp_rival_mint = rival.id;
-      pool.pvp_rival_pool = rivalPool.address;
-      pool.pvp_rival_tvl = round(Number(rivalPool.tvl || 0));
-      pool.pvp_rival_holders = rivalHolders;
-      pool.pvp_rival_fees = Number(rivalFees.toFixed(2));
-      log("screening", `PVP guard: ${pool.name} has active rival ${pool.pvp_rival_name} (${rival.id.slice(0, 8)})`);
-      break;
-    }
-  }));
+        pool.is_pvp = true;
+        pool.pvp_risk = "high";
+        pool.pvp_symbol = pool.base?.symbol || symbol;
+        pool.pvp_rival_name = rival?.name || pool.pvp_symbol;
+        pool.pvp_rival_mint = rival.id;
+        pool.pvp_rival_pool = rivalPool.address;
+        pool.pvp_rival_tvl = round(Number(rivalPool.tvl || 0));
+        pool.pvp_rival_holders = rivalHolders;
+        pool.pvp_rival_fees = Number(rivalFees.toFixed(2));
+        log("screening", `PVP guard: ${pool.name} has active rival ${pool.pvp_rival_name} (${rival.id.slice(0, 8)})`);
+        break;
+      }
+    }));
+  } catch (err) {
+    log("screening", `PVP enrichment failed: ${err.message} — marking all pools as unknown risk`);
+    pools.forEach((pool) => {
+      pool.is_pvp = null;
+      pool.pvp_risk = "unknown";
+      pool.pvp_risk_reason = "enrichment timeout";
+    });
+  }
 }
 
 
@@ -408,10 +440,11 @@ export async function discoverPools({
       : null,
   ].filter(Boolean).join("&&");
 
+  const apiTimeframe = pickApiTimeframe(s.timeframe);
   const data = await fetchPoolDiscoveryPage({
     page_size,
     filters,
-    timeframe: s.timeframe,
+    timeframe: apiTimeframe,
     category: s.category,
   });
 
@@ -584,24 +617,64 @@ export async function getTopCandidates({ limit = 10 } = {}) {
     : Number(config.screening.minTvl ?? 0);
   const maxTvl = config.screening.maxTvl == null ? null : Number(config.screening.maxTvl);
   const minFeeActiveTvlRatio = Number(config.screening.minFeeActiveTvlRatio ?? 0);
+  const SMART_WALLET_BYPASS_SCORE = Number(config.screening.smartWalletBypassScore ?? 3);
+
+  // Pre-compute smart wallet + pool memory scores async (filter is sync, can't await)
+  await Promise.all(
+    pools.map(async (p) => {
+      try {
+        const swResult = await checkSmartWalletsOnPool({ pool_address: p.pool });
+        p._swScore = Number(swResult?.score || 0);
+        p._swDominant = swResult?.dominant_strategy || "none";
+      } catch {
+        p._swScore = 0;
+        p._swDominant = "none";
+      }
+      try {
+        const mem = getPoolMemory({ pool_address: p.pool }) || {};
+        const deploys = Array.isArray(mem.deploys) ? mem.deploys : [];
+        if (deploys.length > 0) {
+          const avgPnl = deploys.reduce((sum, d) => sum + Number(d.pnl_pct || 0), 0) / deploys.length;
+          const totalFees = deploys.reduce((sum, d) => sum + Number(d.fee_earned_pct || 0), 0);
+          p._pmScore = Math.max(0, Math.round(avgPnl * 10 + totalFees));
+          p._pmAvgPnl = avgPnl;
+        } else {
+          p._pmScore = 0;
+        }
+      } catch {
+        p._pmScore = 0;
+      }
+    })
+  );
 
   const eligible = pools
     .filter((p) => {
+      // Smart wallet bypass: pre-computed scores from async phase
+      const swScore = p._swScore || 0;
+      const pmScore = p._pmScore || 0;
+      p.smart_wallets_score = swScore;
+      p.smart_wallets_category = p._swDominant || "none";
+      if (pmScore > 0) {
+        p.pool_memory_score = pmScore;
+        p.pool_memory_avg_pnl = p._pmAvgPnl;
+      }
+      const bypassFundamentals = swScore >= SMART_WALLET_BYPASS_SCORE || pmScore >= SMART_WALLET_BYPASS_SCORE || (p.volatility >= 6 && p.fee_active_tvl_ratio >= 0.02);
+
       const tvl = Number(p.tvl ?? p.active_tvl ?? 0);
-      if (Number.isFinite(minTvl) && minTvl > 0 && tvl < minTvl) {
+      if (!bypassFundamentals && Number.isFinite(minTvl) && minTvl > 0 && tvl < minTvl) {
         pushFilteredReason(filteredOut, p, `TVL $${tvl} below minTvl $${minTvl}`, 5);
         return false;
       }
-      if (Number.isFinite(maxTvl) && maxTvl > 0 && tvl > maxTvl) {
+      if (!bypassFundamentals && Number.isFinite(maxTvl) && maxTvl > 0 && tvl > maxTvl) {
         pushFilteredReason(filteredOut, p, `TVL $${tvl} above maxTvl $${maxTvl}`, 5);
         return false;
       }
       const feeActiveTvlRatio = Number(p.fee_active_tvl_ratio);
-      if (Number.isFinite(minFeeActiveTvlRatio) && minFeeActiveTvlRatio > 0 && (!Number.isFinite(feeActiveTvlRatio) || feeActiveTvlRatio < minFeeActiveTvlRatio)) {
+      if (!bypassFundamentals && Number.isFinite(minFeeActiveTvlRatio) && minFeeActiveTvlRatio > 0 && (!Number.isFinite(feeActiveTvlRatio) || feeActiveTvlRatio < minFeeActiveTvlRatio)) {
         pushFilteredReason(filteredOut, p, `fee/active-TVL ${Number.isFinite(feeActiveTvlRatio) ? feeActiveTvlRatio : "unknown"} below minFeeActiveTvlRatio ${minFeeActiveTvlRatio}`, 5);
         return false;
       }
-      if (!isUsableVolatility(p.volatility)) {
+      if (!bypassFundamentals && !isUsableVolatility(p.volatility)) {
         pushFilteredReason(filteredOut, p, `volatility ${p.volatility ?? "unknown"} unusable`, 5);
         return false;
       }
@@ -632,9 +705,10 @@ export async function getTopCandidates({ limit = 10 } = {}) {
     await enrichPvpRisk(eligible);
     if (config.screening.blockPvpSymbols) {
       const before = eligible.length;
-      const pvpRemoved = eligible.filter((p) => p.is_pvp);
-      pvpRemoved.forEach((p) => pushFilteredReason(filteredOut, p, "PVP hard filter", 5));
-      eligible.splice(0, eligible.length, ...eligible.filter((p) => !p.is_pvp));
+      // Block pools with confirmed PVP OR unknown PVP risk (fail-closed: better to miss a pool than to deploy blind)
+      const pvpRemoved = eligible.filter((p) => p.is_pvp || p.pvp_risk === "unknown");
+      pvpRemoved.forEach((p) => pushFilteredReason(filteredOut, p, `PVP hard filter (${p.is_pvp ? "confirmed" : "unknown risk"})`, 5));
+      eligible.splice(0, eligible.length, ...eligible.filter((p) => !p.is_pvp && p.pvp_risk !== "unknown"));
       if (eligible.length < before) {
         log("screening", `PVP hard filter removed ${before - eligible.length} pool(s)`);
       }

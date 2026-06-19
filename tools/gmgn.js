@@ -178,7 +178,7 @@ function passBasicRankFilter(token) {
     : null;
   if (num(token.market_cap) < g.minMcap) reasons.push(`mcap ${num(token.market_cap)} < ${g.minMcap}`);
   if (g.maxMcap != null && num(token.market_cap) > g.maxMcap) reasons.push(`mcap ${num(token.market_cap)} > ${g.maxMcap}`);
-  if (num(token.bundler_rate) > g.maxBundlerRate) reasons.push(`bundler ${(num(token.bundler_rate) * 100).toFixed(1)}% > ${(g.maxBundlerRate * 100).toFixed(1)}%`);
+  if (failNum(token.bundler_rate) > g.maxBundlerRate) reasons.push(`bundler ${(failNum(token.bundler_rate) * 100).toFixed(1)}% > ${(g.maxBundlerRate * 100).toFixed(1)}%`);
   if (g.minTokenAgeHours != null && tokenAgeHours != null && tokenAgeHours < g.minTokenAgeHours) {
     reasons.push(`age ${tokenAgeHours.toFixed(2)}h < ${g.minTokenAgeHours}h`);
   }
@@ -335,7 +335,7 @@ async function fetchPoolDetailDirect(poolAddress) {
   // Always use Meteora's public Pool Discovery API — the server-side endpoint
   // (api.agentmeridian.xyz) returns stale/fee=0 data for some pools.
   const discoveryBase = "https://pool-discovery-api.datapi.meteora.ag";
-  const url = `${discoveryBase}/pools?page_size=1&filter_by=${encodeURIComponent(`pool_address=${poolAddress}`)}&timeframe=5m`;
+  const url = `${discoveryBase}/pools?page_size=1&filter_by=${encodeURIComponent(`pool_address=${poolAddress}`)}&timeframe=1h`;
   const res = await fetch(url);
   if (!res.ok) return null;
   const data = await res.json();
@@ -352,8 +352,10 @@ async function pickBestPool(pools) {
   const scored = pools.map((pool, i) => {
     const d = details[i];
     const activeTvl = num(d?.active_tvl ?? pool.active_tvl ?? pool.tvl ?? pool.liquidity);
-    const feeActiveTvlRatio = Number.isFinite(Number(d?.fee_active_tvl_ratio))
-      ? Number(d.fee_active_tvl_ratio)
+    // P3-FeeGate: pool may be overwritten with 1h values by applyVolatilityTimeframe
+    const feeRaw = pool.fee_active_tvl_ratio ?? d?.fee_active_tvl_ratio;
+    const feeActiveTvlRatio = Number.isFinite(Number(feeRaw))
+      ? Number(feeRaw)
       : 0;
     return { pool, detail: d, feeActiveTvlRatio, activeTvl };
   });
@@ -367,8 +369,12 @@ function condenseGmgnCandidate({ token, pool, poolDetail, security, info, infoAn
   // Stage 3 Meteora search provides tvl and bin_step/base_fee_pct via pool_config
   const tvl = num(poolDetail?.tvl ?? pool.tvl ?? pool.liquidity);
   const activeTvl = num(poolDetail?.active_tvl ?? pool.active_tvl ?? tvl);
-  const feeActiveTvlRatio = Number.isFinite(Number(poolDetail?.fee_active_tvl_ratio))
-    ? Number(Number(poolDetail.fee_active_tvl_ratio).toFixed(4))
+  // P3-FeeGate: prefer poolDetail.fee_active_tvl_ratio (1h source via fetchPoolDetailDirect)
+  // over pool.fee_active_tvl_ratio (30m source from stage-level pool data).
+  // poolDetail is always the freshest since fetchPoolDetailDirect re-queries the API.
+  const feeRaw = poolDetail?.fee_active_tvl_ratio ?? pool.fee_active_tvl_ratio ?? poolDetail?.fee_tvl_ratio;
+  const feeActiveTvlRatio = Number.isFinite(Number(feeRaw))
+    ? Number(Number(feeRaw).toFixed(4))
     : null;
   const kolCount = holdersAnalysis.kolHolding || num(token.renowned_count) || num(info?.wallet_tags_stat?.renowned_wallets);
   const smartCount = holdersAnalysis.smartHolding + holdersAnalysis.smartAccumulating || num(token.smart_degen_count) || num(info?.wallet_tags_stat?.smart_wallets);
@@ -403,7 +409,9 @@ function condenseGmgnCandidate({ token, pool, poolDetail, security, info, infoAn
     tvl: round(tvl),
     active_tvl: round(activeTvl),
     fee_active_tvl_ratio: feeActiveTvlRatio,
-    volatility: poolDetail?.volatility != null ? Number(Number(poolDetail.volatility).toFixed(2)) : null,
+    // P2-VolTimeframe (kanban): prefer poolDetail.volatility (1h via fetchPoolDetailDirect)
+    // over pool.volatility (30m source from stage-level pool data).
+    volatility: poolDetail?.volatility != null ? Number(Number(poolDetail.volatility).toFixed(2)) : (pool.volatility != null ? Number(Number(pool.volatility).toFixed(2)) : null),
     // Stage 1 GMGN rank: token-level metrics
     holders: num(token.holder_count || info.holder_count),
     mcap: round(num(token.market_cap || (num(info.price) * num(info.circulating_supply)))),
@@ -674,6 +682,23 @@ export async function discoverGmgnPools({ limit = 10 } = {}) {
       const candidate = condenseGmgnCandidate({ token, pool, poolDetail, security, info, infoAnalysis: infoCheck, holdersAnalysis: holdersCheck, indicatorSignal });
       if (!candidate.pool || !candidate.base?.mint) {
         filtered.push({ stage: 5, name: token.symbol || mint, reason: "incomplete pool mapping" });
+        continue;
+      }
+      // P1-FeeGate (kanban t_f8d67738): drop low-fee pools before LLM analysis.
+      // Saves ~80% of LLM calls per the 4-day audit (430/500+ observations had 0.0% fee/tvl).
+      // Unit: poolDetail.fee_active_tvl_ratio is decimal ratio (0.0868 = 8.68%), matching
+      // config.screening.minFeeActiveTvlRatio (0.005 = 0.5%). Same comparison as executor.js.
+      const minFeeRatio = config.screening.minFeeActiveTvlRatio;
+      if (
+        Number.isFinite(minFeeRatio) && minFeeRatio > 0 &&
+        candidate.fee_active_tvl_ratio != null &&
+        candidate.fee_active_tvl_ratio < minFeeRatio
+      ) {
+        filtered.push({
+          stage: 5,
+          name: token.symbol || mint,
+          reason: `fee/tvl ${(candidate.fee_active_tvl_ratio * 100).toFixed(4)}% < min ${(minFeeRatio * 100).toFixed(4)}%`,
+        });
         continue;
       }
       pools.push(candidate);
