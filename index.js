@@ -1,4 +1,8 @@
-import "./envcrypt.js";
+import dotenv from "dotenv";
+// Load .env before anything else
+dotenv.config();
+
+import fs from "fs";
 import cron from "node-cron";
 import readline from "readline";
 import path from "path";
@@ -246,6 +250,10 @@ export async function runManagementCycle({ silent = false } = {}) {
     }
     const livePositions = await getMyPositions({ force: true }).catch(() => null);
     positions = livePositions?.positions || [];
+    if (!Array.isArray(positions)) {
+      log("cron_error", `getMyPositions returned invalid positions: ${JSON.stringify(livePositions)}`);
+      positions = [];
+    }
 
     if (positions.length === 0) {
       log("cron", "No open positions — triggering screening cycle");
@@ -358,20 +366,20 @@ export async function runManagementCycle({ silent = false } = {}) {
 
     if (actionPositions.length > 0) {
       log("cron", `Management: ${actionPositions.length} action(s) needed — invoking LLM [model: ${config.llm.managementModel}]`);
+      try {
+        const actionBlocks = actionPositions.map((p) => {
+          const act = actionMap.get(p.position);
+          return [
+            `POSITION: ${p.pair} (${p.position})`,
+            `  pool: ${p.pool}`,
+            `  action: ${act.action}${act.rule && act.rule !== "exit" ? ` — Rule ${act.rule}: ${act.reason}` : ""}${act.rule === "exit" ? ` — ⚡ Trailing TP: ${act.reason}` : ""}`,
+            `  pnl_pct: ${p.pnl_pct}% | unclaimed_fees: ${cur}${p.unclaimed_fees_usd} | value: ${cur}${p.total_value_usd} | fee_per_tvl_24h: ${p.fee_per_tvl_24h ?? "?"}%`,
+            `  bins: lower=${p.lower_bin} upper=${p.upper_bin} active=${p.active_bin} | oor_minutes: ${p.minutes_out_of_range ?? 0}`,
+            p.instruction ? `  instruction: "${p.instruction}"` : null,
+          ].filter(Boolean).join("\n");
+        }).join("\n\n");
 
-      const actionBlocks = actionPositions.map((p) => {
-        const act = actionMap.get(p.position);
-        return [
-          `POSITION: ${p.pair} (${p.position})`,
-          `  pool: ${p.pool}`,
-          `  action: ${act.action}${act.rule && act.rule !== "exit" ? ` — Rule ${act.rule}: ${act.reason}` : ""}${act.rule === "exit" ? ` — ⚡ Trailing TP: ${act.reason}` : ""}`,
-          `  pnl_pct: ${p.pnl_pct}% | unclaimed_fees: ${cur}${p.unclaimed_fees_usd} | value: ${cur}${p.total_value_usd} | fee_per_tvl_24h: ${p.fee_per_tvl_24h ?? "?"}%`,
-          `  bins: lower=${p.lower_bin} upper=${p.upper_bin} active=${p.active_bin} | oor_minutes: ${p.minutes_out_of_range ?? 0}`,
-          p.instruction ? `  instruction: "${p.instruction}"` : null,
-        ].filter(Boolean).join("\n");
-      }).join("\n\n");
-
-      const { content } = await agentLoop(`
+        const { content } = await agentLoop(`
 MANAGEMENT ACTION REQUIRED — ${actionPositions.length} position(s)
 
 ${actionBlocks}
@@ -383,13 +391,12 @@ RULES:
 - ⚡ exit alerts: close immediately, no exceptions
 
 Execute the required actions. Do NOT re-evaluate CLOSE/CLAIM — rules already applied. Just execute.
-After executing, write a brief one-line result per position.
-      `, config.llm.maxSteps, [], "MANAGER", config.llm.managementModel, 2048, {
-        onToolStart: async ({ name }) => { await liveMessage?.toolStart(name); },
-        onToolFinish: async ({ name, result, success }) => { await liveMessage?.toolFinish(name, result, success); },
-      });
-
-      mgmtReport += `\n\n${content}`;
+`);
+        mgmtReport += `\n\n🤖 <b>Agent Response</b>\n${content}`;
+      } catch (error) {
+        log("cron_error", `Agent loop failed: ${error.stack || error.message}`);
+        mgmtReport += `\n\n❌ <b>Agent Error</b>\n${error.message}`;
+      }
     } else {
       log("cron", "Management: all positions STAY — skipping LLM");
       await liveMessage?.note("No tool actions needed.");
@@ -683,6 +690,7 @@ STEPS:
 2. Pick the best candidate only if it has real conviction from narrative quality, smart wallets, and pool metrics. If the list has only one pool and it lacks narrative or smart-wallet confirmation, skip the cycle.
 3. If a pool qualifies, call deploy_position (active_bin is pre-fetched above — no need to call get_active_bin).
    strategy = ${config.strategy.strategy} (always use this, never change it).
+   // If candidate volatility is not finite and > 0, skip this candidate entirely (unusable feed).
    bins_below = round(${config.strategy.minBinsBelow} + (candidate volatility/5)*${config.strategy.maxBinsBelow - config.strategy.minBinsBelow}) clamped to [${config.strategy.minBinsBelow},${config.strategy.maxBinsBelow}].
    pass deploy_position.volatility = the candidate volatility value.
    bins_above = 0. Single-side SOL only: set amount_y, keep amount_x = 0.
@@ -964,8 +972,15 @@ function getDeterministicCloseRule(position, managementConfig) {
     return false;
   })();
 
-  if (!pnlSuspect && position.pnl_pct != null && position.pnl_pct <= managementConfig.stopLossPct) {
-    return { action: "CLOSE", rule: 1, reason: "stop loss" };
+  // Dynamic SL: high-vol positions get wider SL buffer to avoid premature stop-out
+  const positionVol = Number(position.volatility ?? 0);
+  let dynamicSl = managementConfig.stopLossPct;
+  if (positionVol >= 7) dynamicSl = -8;
+  else if (positionVol >= 3) dynamicSl = -6;
+  // else keep default -5% for low-vol
+
+  if (!pnlSuspect && position.pnl_pct != null && position.pnl_pct <= dynamicSl) {
+    return { action: "CLOSE", rule: 1, reason: `stop loss (vol=${positionVol.toFixed(2)}, SL=${dynamicSl}%)` };
   }
   if (!pnlSuspect && position.pnl_pct != null && position.pnl_pct >= managementConfig.takeProfitPct) {
     return { action: "CLOSE", rule: 2, reason: "take profit" };
@@ -1061,9 +1076,9 @@ function computeBinsBelow(volatility) {
   }
   const lo = config.strategy.minBinsBelow;
   const hi = config.strategy.maxBinsBelow;
-  // INVERSE LOGIC: High vol = tighter range (lo), Low vol = wider range (hi)
-  // Data: vol < 2.0 sweet spot is 46-50, vol >= 2.0 sweet spot is 36-45
-  return Math.max(lo, Math.min(hi, Math.round(hi - (parsedVolatility / 5) * (hi - lo))));
+  // CORRECT LOGIC: High vol = wider range (hi), Low vol = tighter range (lo)
+  // High volatility needs more buffer to avoid stop-loss from price spikes
+  return Math.max(lo, Math.min(hi, Math.round(lo + (parsedVolatility / 5) * (hi - lo))));
 }
 
 // ═══════════════════════════════════════════
@@ -2247,6 +2262,17 @@ Focus on: hold duration, entry/exit timing, what win rates look like, whether sc
         if (!result || Object.keys(result.changes).length === 0) {
           console.log("\nNo threshold changes needed — current settings already match performance data.\n");
         } else {
+          // Save changes to user-config.json
+          const fs = await import("fs");
+          const userConfig = JSON.parse(fs.default.readFileSync(repoPath("user-config.json"), "utf8"));
+          for (const [key, val] of Object.entries(result.changes)) {
+            if (key.startsWith('min') || key.startsWith('max')) {
+              if (!userConfig.screening) userConfig.screening = {};
+              userConfig.screening[key] = val;
+            }
+          }
+          fs.default.writeFileSync(repoPath("user-config.json"), JSON.stringify(userConfig, null, 2));
+          
           reloadScreeningThresholds();
           console.log("\nThresholds evolved:");
           for (const [key, val] of Object.entries(result.changes)) {

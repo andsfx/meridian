@@ -523,8 +523,8 @@ export function evolveThresholds(perfData, config) {
     // Low volatility losers with current bin_step
     const lowVolLosers = lowVol.filter(p => p.pnl_pct < 0 && p.bin_step === current);
     if (lowVolLosers.length >= 2) {
-      // Raise minBinStep to avoid low volatility pools
-      const target = Math.min(current + 10, 125); // Don't exceed 125
+      // Raise minBinStep to avoid low volatility pools, but cap at 100
+      const target = Math.min(current + 10, 100); // Don't exceed 100
       if (target > current) {
         changes.minBinStep = target;
         rationale.minBinStep = `Low volatility pools underperformed at bin_step ${current} — raised to ${target}`;
