@@ -12,6 +12,7 @@ import { getSharedLessonsForPrompt, pushHiveLesson, pushHivePerformanceEvent } f
 import { repoPath } from "./repo-root.js";
 
 const USER_CONFIG_PATH = repoPath("user-config.json");
+const STATE_PATH       = repoPath("state.json");
 
 const LESSONS_FILE = repoPath("lessons.json");
 const MIN_EVOLVE_POSITIONS = 5;   // don't evolve until we have real data
@@ -49,7 +50,11 @@ function load() {
     return { lessons: [], performance: [] };
   }
   try {
-    return JSON.parse(fs.readFileSync(LESSONS_FILE, "utf8"));
+    const parsed = JSON.parse(fs.readFileSync(LESSONS_FILE, "utf8"));
+    return {
+      lessons: parsed.lessons || [],
+      performance: parsed.performance || []
+    };
   } catch {
     return { lessons: [], performance: [] };
   }
@@ -241,6 +246,7 @@ function derivLesson(perf) {
     `fee_tvl_ratio=${perf.fee_tvl_ratio}`,
     `organic=${perf.organic_score}`,
     `bin_range=${typeof perf.bin_range === 'object' ? JSON.stringify(perf.bin_range) : perf.bin_range}`,
+    `held=${perf.minutes_held}m`,
   ];
   if (perf.entry_mcap != null || perf.entry_tvl != null || perf.entry_volume != null) {
     contextParts.push(`entry(mcap=${fmtNum(perf.entry_mcap)}, tvl=${fmtNum(perf.entry_tvl)}, vol=${fmtNum(perf.entry_volume)})`);
@@ -308,6 +314,7 @@ function derivLesson(perf) {
     fees_earned_usd: perf.fees_earned_usd,
     initial_value_usd: perf.initial_value_usd,
     range_efficiency: perf.range_efficiency,
+    minutes_held: perf.minutes_held ?? null,
     close_reason: perf.close_reason,
     pool: perf.pool,
     entry_mcap: perf.entry_mcap ?? null,
@@ -333,8 +340,10 @@ function derivLesson(perf) {
 export function evolveThresholds(perfData, config) {
   if (!perfData || perfData.length < MIN_EVOLVE_POSITIONS) return null;
 
-  const winners = perfData.filter((p) => p.pnl_pct > 0);
-  const losers  = perfData.filter((p) => p.pnl_pct < -5);
+  const EVOLVE_WINDOW = config.darwin?.evolveWindow ?? 150;
+  const windowData = perfData.slice(-EVOLVE_WINDOW);
+  const winners = windowData.filter((p) => p.pnl_pct > 0);
+  const losers  = windowData.filter((p) => p.pnl_pct < -5);
 
   // Need at least some signal in both directions before adjusting
   const hasSignal = winners.length >= 2 || losers.length >= 2;
@@ -352,7 +361,7 @@ export function evolveThresholds(perfData, config) {
 
     if (winnerFees.length >= 2) {
       // Minimum fee/TVL among winners — we know pools below this don't work for us
-      const minWinnerFee = Math.min(...winnerFees);
+      const minWinnerFee = percentile(winnerFees, 10);
       if (minWinnerFee > current * 1.2) {
         const target  = minWinnerFee * 0.85; // stay slightly below min winner
         const newVal  = clamp(nudge(current, target, MAX_CHANGE_PER_STEP), 0.05, 10.0);
@@ -369,7 +378,7 @@ export function evolveThresholds(perfData, config) {
       // But if losers had low fee/TVL, raise min
       const maxLoserFee = Math.max(...loserFees);
       if (maxLoserFee < current * 1.5 && winnerFees.length > 0) {
-        const minWinnerFee = Math.min(...winnerFees);
+        const minWinnerFee = percentile(winnerFees, 10);
         if (minWinnerFee > maxLoserFee) {
           const target  = maxLoserFee * 1.2;
           const newVal  = clamp(nudge(current, target, MAX_CHANGE_PER_STEP), 0.05, 10.0);
@@ -391,20 +400,125 @@ export function evolveThresholds(perfData, config) {
     const current        = config.screening.minOrganic;
 
     if (loserOrganics.length >= 2 && winnerOrganics.length >= 1) {
-      const avgLoserOrganic  = avg(loserOrganics);
-      const avgWinnerOrganic = avg(winnerOrganics);
+      const p25LoserOrganic  = percentile(loserOrganics, 25);
+      const p75WinnerOrganic = percentile(winnerOrganics, 75);
       // Only raise if there's a clear gap (winners consistently more organic)
-      if (avgWinnerOrganic - avgLoserOrganic >= 10) {
+      if (p75WinnerOrganic - p25LoserOrganic >= 10) {
         // Set floor just below worst winner
         const minWinnerOrganic = Math.min(...winnerOrganics);
         const target = Math.max(minWinnerOrganic - 3, current);
         const newVal = clamp(Math.round(nudge(current, target, MAX_CHANGE_PER_STEP)), 60, 90);
         if (newVal > current) {
           changes.minOrganic = newVal;
-          rationale.minOrganic = `Winner avg organic ${avgWinnerOrganic.toFixed(0)} vs loser avg ${avgLoserOrganic.toFixed(0)} — raised from ${current} → ${newVal}`;
+          rationale.minOrganic = `Winner 75th pct organic ${p75WinnerOrganic.toFixed(0)} vs loser 25th pct ${p25LoserOrganic.toFixed(0)} — raised from ${current} → ${newVal}`;
+        }
+      }
+
+      // Downward adjustment: if avg losers had higher organic than current floor,
+      // current threshold is filtering out winners we previously captured. Lower it.
+      const avgLoserOrganic = avg(loserOrganics);
+      if (winnerOrganics.length >= 1 && avgLoserOrganic > current) {
+        const target = Math.min(avgLoserOrganic + 3, current);
+        const newVal = clamp(Math.round(nudge(current, target, MAX_CHANGE_PER_STEP)), 60, 90);
+        if (newVal < current) {
+          changes.minOrganic = newVal;
+          rationale.minOrganic = `Avg loser organic ${avgLoserOrganic.toFixed(0)} above current floor ${current} — lowering threshold to ${newVal} to recapture winners`;
         }
       }
     }
+  }
+
+  // ── Hold-Time Learning (audit P2-C) ──────────────────────────
+  // Strongest signal in 649-trade audit: 82.6% winrate at 240m+ hold.
+  // Evolve outOfRangeWaitMinutes based on hold-bucket winrate pattern.
+  {
+    const holdBuckets = [
+      { name: "short",  lo: 0,    hi: 60,   mult: 0.5 },
+      { name: "medium", lo: 60,   hi: 240,  mult: 1.0 },
+      { name: "long",   lo: 240,  hi: 720,  mult: 1.0 },
+      { name: "ultra",  lo: 720,  hi: 9e9,  mult: 1.0 },
+    ];
+    const bucketStats = holdBuckets.map(b => {
+      const subset = windowData.filter(p => Number.isFinite(p.minutes_held) && p.minutes_held >= b.lo && p.minutes_held < b.hi);
+      if (subset.length < 2) return { ...b, n: subset.length, winrate: null, avgPnl: null };
+      const wins = subset.filter(p => p.pnl_pct > 0).length;
+      return { ...b, n: subset.length, winrate: wins / subset.length, avgPnl: subset.reduce((s, p) => s + (p.pnl_pct || 0), 0) / subset.length };
+    });
+    const valid = bucketStats.filter(b => b.winrate != null && b.n >= 2);
+    if (valid.length >= 2) {
+      const longBucket = valid.find(b => b.lo >= 240);
+      const shortBucket = valid.find(b => b.hi <= 60);
+      const current = config.management?.outOfRangeWaitMinutes ?? 30;
+      if (longBucket && longBucket.winrate >= 0.7 && (shortBucket == null || longBucket.winrate > shortBucket.winrate + 0.15)) {
+        // Long holds much better than short → raise OOR patience
+        const target = Math.min(current + 15, 120);
+        const newVal = clamp(Math.round(nudge(current, target, MAX_CHANGE_PER_STEP)), 15, 120);
+        if (newVal > current) {
+          changes.outOfRangeWaitMinutes = newVal;
+          rationale.outOfRangeWaitMinutes = `Long holds (${longBucket.lo}-${longBucket.hi}m) winrate ${(longBucket.winrate*100).toFixed(0)}% > short ${shortBucket ? (shortBucket.winrate*100).toFixed(0) + '%' : 'insufficient data'} — raised OOR patience from ${current}m → ${newVal}m`;
+        }
+      } else if (shortBucket && shortBucket.winrate >= 0.7 && (longBucket == null || shortBucket.winrate > longBucket.winrate + 0.15)) {
+        // Short holds better → tighten OOR patience (rare, but data-driven)
+        const target = Math.max(current - 10, 15);
+        const newVal = clamp(Math.round(nudge(current, target, MAX_CHANGE_PER_STEP)), 15, 120);
+        if (newVal < current) {
+          changes.outOfRangeWaitMinutes = newVal;
+          rationale.outOfRangeWaitMinutes = `Short holds winrate ${(shortBucket.winrate*100).toFixed(0)}% > long ${longBucket ? (longBucket.winrate*100).toFixed(0) + '%' : 'insufficient data'} — tightened OOR patience from ${current}m → ${newVal}m`;
+        }
+      }
+    }
+  }
+
+  // ── Funnel Gate Auto-Learn (P4-A) ────────────────────────────────
+  // Adjust minTvl / minMcap / minHolders / minVolume based on deploy frequency + win rate
+  // Relaxes when funnel starves (< 3 deploys/week), tightens when win rate low (losers slipping through)
+  // Read closed positions from state.json (perfData is the lesson DB, not the raw record)
+  const s = config.screening;
+  const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
+  const recentClosed = perfData.filter((p) => {
+    const recorded = Date.parse(p.recorded_at);
+    return Number.isFinite(recorded) && Date.now() - recorded < SEVEN_DAYS;
+  });
+
+  const recentWinners = recentClosed.filter((p) => (p.peak_pnl_pct ?? 0) > 5);
+  const recentWinRate = recentClosed.length > 0 ? recentWinners.length / recentClosed.length : null;
+
+  // Helper: clamp + apply ±20% rate limit per evolution step
+  const adjustGate = (key, currentRaw, factor, floor, ceiling, reason) => {
+    const current = Number(currentRaw);
+    if (!Number.isFinite(current) || current <= 0) return null;
+    const target = Math.round(current * factor);
+    const newVal = Math.max(floor, Math.min(ceiling, target));
+    if (newVal === current) return null;
+    changes[key] = newVal;
+    rationale[key] = `${reason} (${current} → ${newVal})`;
+    return newVal;
+  };
+
+  // RELAX: funnel too tight (< 3 deploys in 7 days)
+  if (recentClosed.length > 0 && recentClosed.length < 3) {
+    const currentMinTvl = s.minTvl ?? 10000;
+    const currentMinMcap = s.minMcap ?? 150000;
+    const currentMinHolders = s.minHolders ?? 500;
+    const currentMinVolume = s.minVolume ?? 500;
+    const relaxFactor = 0.9; // 10% relaxation
+    const reason = `Funnel starve: ${recentClosed.length} deploys/7d — relaxing gates`;
+    adjustGate("minTvl", currentMinTvl, relaxFactor, 1000, 50000, reason);
+    adjustGate("minMcap", currentMinMcap, relaxFactor, 50000, 500000, reason);
+    adjustGate("minHolders", currentMinHolders, relaxFactor, 200, 2000, reason);
+    adjustGate("minVolume", currentMinVolume, relaxFactor, 200, 5000, reason);
+  }
+  // TIGHTEN: funnel too loose (win rate < 30% AND ≥ 5 deploys)
+  else if (recentWinRate != null && recentWinRate < 0.30 && recentClosed.length >= 5) {
+    const currentMinTvl = s.minTvl ?? 10000;
+    const currentMinMcap = s.minMcap ?? 150000;
+    const currentMinVolume = s.minVolume ?? 500;
+    const tightenFactor = 1.1; // 10% tightening
+    const reason = `Win rate ${(recentWinRate*100).toFixed(0)}% over ${recentClosed.length} deploys/7d — tightening gates`;
+    adjustGate("minTvl", currentMinTvl, tightenFactor, 1000, 50000, reason);
+    adjustGate("minMcap", currentMinMcap, tightenFactor, 50000, 500000, reason);
+    adjustGate("minHolders", s.minHolders ?? 500, tightenFactor, 200, 2000, reason);
+    adjustGate("minVolume", currentMinVolume, tightenFactor, 200, 5000, reason);
   }
 
   if (Object.keys(changes).length === 0) return { changes: {}, rationale: {} };
@@ -422,9 +536,16 @@ export function evolveThresholds(perfData, config) {
   fs.writeFileSync(USER_CONFIG_PATH, JSON.stringify(userConfig, null, 2));
 
   // Apply to live config object immediately
-  const s = config.screening;
   if (changes.minFeeActiveTvlRatio != null) s.minFeeActiveTvlRatio = changes.minFeeActiveTvlRatio;
   if (changes.minOrganic       != null) s.minOrganic       = changes.minOrganic;
+  if (changes.minTvl           != null) s.minTvl           = changes.minTvl;
+  if (changes.maxTvl           != null) s.maxTvl           = changes.maxTvl;
+  if (changes.minMcap          != null) s.minMcap          = changes.minMcap;
+  if (changes.maxMcap          != null) s.maxMcap          = changes.maxMcap;
+  if (changes.minHolders       != null) s.minHolders       = changes.minHolders;
+  if (changes.minVolume        != null) s.minVolume        = changes.minVolume;
+  const m = config.management;
+  if (changes.outOfRangeWaitMinutes != null && m) m.outOfRangeWaitMinutes = changes.outOfRangeWaitMinutes;
 
   // Log a lesson summarizing the evolution
   const data = load();
@@ -741,7 +862,7 @@ export function getPerformanceHistory({ hours = 24, limit = 50 } = {}) {
  */
 export function getPerformanceSummary() {
   const data = load();
-  const p = data.performance;
+  const p = data.performance || [];
 
   if (p.length === 0) return null;
 

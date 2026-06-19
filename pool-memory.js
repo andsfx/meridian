@@ -204,8 +204,13 @@ export function recordPoolDeploy(poolAddress, deployData) {
       recentRepeatDeploys.length >= triggerCount &&
       recentRepeatDeploys.every((d) => d.pnl_pct != null && isFeeGeneratingDeploy(d));
 
-    if (repeatedFeeGeneratingDeploys) {
-      const reason = `repeat fee-generating deploys (${triggerCount}x)`;
+    // New: Trigger on repeated Rule 3 closes
+    const repeatedRule3Closes =
+      recentRepeatDeploys.length >= triggerCount &&
+      recentRepeatDeploys.filter((d) => isOorCloseReason(d.close_reason)).length >= Math.ceil(triggerCount * 0.5);
+
+    if (repeatedFeeGeneratingDeploys || repeatedRule3Closes) {
+      const reason = repeatedRule3Closes ? `repeated Rule 3 closes (${triggerCount}x)` : `repeat fee-generating deploys (${triggerCount}x)`;
       if (scope === "pool" || scope === "both" || !entry.base_mint) {
         const poolCooldownUntil = setPoolCooldown(entry, cooldownHours, reason);
         log("pool-memory", `Cooldown set for ${entry.name} until ${poolCooldownUntil} (${reason})`);
@@ -223,8 +228,23 @@ export function recordPoolDeploy(poolAddress, deployData) {
   log("pool-memory", `Recorded deploy for ${entry.name} (${poolAddress.slice(0, 8)}): PnL ${deploy.pnl_pct}%`);
 }
 
+function isPoolMemoryExempt(poolAddress) {
+  const db = load();
+  const entry = db[poolAddress];
+  if (!entry) return false;
+  const adjustedWinRate = entry.adjusted_win_rate ?? 0;
+  const avgPnlPct = entry.avg_pnl_pct ?? 0;
+  const totalDeploys = entry.total_deploys ?? 0;
+  // P3-ExemptHoldGuard: require avg_minutes_held > 30 to prevent whipsaw re-deploy
+  // after close. New pool addresses for the same base_mint must prove staying power
+  // before exempt kicks in.
+  const avgMinutesHeld = entry.avg_minutes_held ?? 0;
+  return totalDeploys >= 2 && adjustedWinRate >= 50 && avgPnlPct >= 1.0 && avgMinutesHeld > 30;
+}
+
 export function isPoolOnCooldown(poolAddress) {
   if (!poolAddress) return false;
+  if (isPoolMemoryExempt(poolAddress)) return false;
   const db = load();
   const entry = db[poolAddress];
   if (!entry?.cooldown_until) return false;
@@ -235,11 +255,15 @@ export function isBaseMintOnCooldown(baseMint) {
   if (!baseMint) return false;
   const db = load();
   const now = new Date();
-  return Object.values(db).some((entry) =>
-    entry?.base_mint === baseMint &&
-    entry?.base_mint_cooldown_until &&
-    new Date(entry.base_mint_cooldown_until) > now
-  );
+  // Check if any entry matching this base_mint is cooldown-exempt via proven pool memory
+  for (const [poolAddress, entry] of Object.entries(db)) {
+    if (entry?.base_mint !== baseMint) continue;
+    if (isPoolMemoryExempt(poolAddress)) return false;
+    if (entry?.base_mint_cooldown_until && new Date(entry.base_mint_cooldown_until) > now) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // ─── Read ──────────────────────────────────────────────────────
