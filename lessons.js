@@ -428,6 +428,75 @@ export function evolveThresholds(perfData, config) {
     }
   }
 
+  // ── 3. stopLossPct ─────────────────────────────────────────────
+  // Evolve based on fee recovery vs loss severity.
+  // Tighten (more negative) if positions surviving > -5% but < 0% have high fee recovery.
+  // Loosen (less negative) if positions closing at -5% to -10% have low fee recovery.
+  {
+    const current = config.management?.stopLossPct ?? -10;
+    const borderlineLosers = windowData.filter((p) => p.pnl_pct != null && p.pnl_pct >= -10 && p.pnl_pct < 0);
+    const deepLosers = windowData.filter((p) => p.pnl_pct != null && p.pnl_pct < -10);
+
+    if (borderlineLosers.length >= 2) {
+      // Calculate fee recovery ratio (fees_earned_usd / |pnl_usd|)
+      const feeRecoveryRatios = borderlineLosers
+        .map((p) => (p.fees_earned_usd || 0) / Math.abs(p.pnl_usd || 1))
+        .filter(isFiniteNum);
+      
+      if (feeRecoveryRatios.length >= 2) {
+        const avgFeeRecovery = avg(feeRecoveryRatios);
+        if (avgFeeRecovery > 1.5) {
+          // Fees cover losses well — tighten SL (more negative)
+          const target = current * 1.1; // 10% more negative
+          const newVal = clamp(Math.round(target), -50, -1);
+          if (newVal < current) { // More negative
+            changes.stopLossPct = newVal;
+            rationale.stopLossPct = `Borderline losers (>-10%) have high fee recovery (${avgFeeRecovery.toFixed(2)}) — tightened SL from ${current}% → ${newVal}%`;
+          }
+        } else if (avgFeeRecovery < 0.5 && deepLosers.length === 0) {
+          // Low fee recovery, no deep losers — loosen SL (less negative)
+          const target = current * 0.9; // 10% less negative
+          const newVal = clamp(Math.round(target), -50, -1);
+          if (newVal > current) { // Less negative
+            changes.stopLossPct = newVal;
+            rationale.stopLossPct = `Borderline losers have low fee recovery (${avgFeeRecovery.toFixed(2)}) — loosened SL from ${current}% → ${newVal}%`;
+          }
+        }
+      }
+    }
+  }
+
+  // ── 4. binsAbove ───────────────────────────────────────────────
+  // Evolve based on Rule 3 close frequency vs volatility.
+  // Increase if Rule 3 closes occur in pools with volatility ≥ 7.
+  // Decrease if Rule 3 closes occur in pools with volatility < 7.
+  {
+    const rule3Closes = windowData.filter((p) => p.close_reason?.includes('Rule 3') || p.close_reason?.includes('pumped far above range'));
+    const highVolRule3 = rule3Closes.filter((p) => (p.volatility || 0) >= 7);
+    const lowVolRule3 = rule3Closes.filter((p) => (p.volatility || 0) < 7);
+    const current = config.binsAbove ?? 0;
+
+    if (rule3Closes.length >= 2) {
+      if (highVolRule3.length > lowVolRule3.length) {
+        // More Rule 3 closes in high vol — increase binsAbove
+        const target = current + 1;
+        const newVal = clamp(target, 0, 50);
+        if (newVal > current) {
+          changes.binsAbove = newVal;
+          rationale.binsAbove = `More Rule 3 closes in high vol (≥7) pools (${highVolRule3.length} vs ${lowVolRule3.length}) — increased binsAbove from ${current} → ${newVal}`;
+        }
+      } else if (lowVolRule3.length > highVolRule3.length) {
+        // More Rule 3 closes in low vol — decrease binsAbove (but not below 0)
+        const target = Math.max(0, current - 1);
+        const newVal = clamp(target, 0, 50);
+        if (newVal < current) {
+          changes.binsAbove = newVal;
+          rationale.binsAbove = `More Rule 3 closes in low vol (<7) pools (${lowVolRule3.length} vs ${highVolRule3.length}) — decreased binsAbove from ${current} → ${newVal}`;
+        }
+      }
+    }
+  }
+
   // ── Hold-Time Learning (audit P2-C) ──────────────────────────
   // Strongest signal in 649-trade audit: 82.6% winrate at 240m+ hold.
   // Evolve outOfRangeWaitMinutes based on hold-bucket winrate pattern.
