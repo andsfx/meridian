@@ -3,6 +3,7 @@ import { isBlacklisted } from "../token-blacklist.js";
 import { isDevBlocked, getBlockedDevs } from "../dev-blocklist.js";
 import { log } from "../logger.js";
 import { isBaseMintOnCooldown, isPoolOnCooldown, getPoolMemory, getCooldownInfo } from "../pool-memory.js";
+import { formatCooldownRemaining, formatCooldownExpiry } from "./cooldown-formatter.js";
 import { confirmIndicatorPreset } from "./chart-indicators.js";
 import { discoverGmgnPools } from "./gmgn.js";
 import { checkSmartWalletsOnPool } from "../smart-wallets.js";
@@ -688,18 +689,18 @@ export async function getTopCandidates({ limit = 10 } = {}) {
       }
       if (isPoolOnCooldown(p.pool)) {
         const cooldownInfo = getCooldownInfo(p.pool);
-        const until = cooldownInfo?.pool_cooldown_until || 'unknown';
-        const remaining = cooldownInfo?.remaining_hours ? `${cooldownInfo.remaining_hours.toFixed(1)} hours` : 'unknown';
-        log("screening", `Filtered cooldown pool ${p.name} (${p.pool.slice(0, 8)}) — expires at ${until} (in ${remaining})`);
-        pushFilteredReason(filteredOut, p, `pool cooldown active (expires in ${remaining})`, 5);
+        const remaining = formatCooldownRemaining(cooldownInfo?.remaining_hours || 0);
+        const expiresAt = formatCooldownExpiry(cooldownInfo?.pool_cooldown_until);
+        log("screening", `⏳ ${p.name} on cooldown — back at ${expiresAt} (${remaining})`);
+        pushFilteredReason(filteredOut, p, `cooldown (${remaining} remaining)`, 5);
         return false;
       }
       if (isBaseMintOnCooldown(p.base?.mint)) {
         const cooldownInfo = getCooldownInfo(p.base?.mint);
-        const until = cooldownInfo?.base_mint_cooldown_until || 'unknown';
-        const remaining = cooldownInfo?.remaining_hours ? `${cooldownInfo.remaining_hours.toFixed(1)} hours` : 'unknown';
-        log("screening", `Filtered cooldown token ${p.base?.symbol} (${p.base?.mint?.slice(0, 8)}) — expires at ${until} (in ${remaining})`);
-        pushFilteredReason(filteredOut, p, `token cooldown active (expires in ${remaining})`, 5);
+        const remaining = formatCooldownRemaining(cooldownInfo?.remaining_hours || 0);
+        const expiresAt = formatCooldownExpiry(cooldownInfo?.base_mint_cooldown_until);
+        log("screening", `⏳ ${p.base?.symbol || 'Token'} on cooldown — back at ${expiresAt} (${remaining})`);
+        pushFilteredReason(filteredOut, p, `token cooldown (${remaining} remaining)`, 5);
         return false;
       }
       return true;
