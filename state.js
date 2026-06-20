@@ -472,6 +472,13 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
   if (pos.out_of_range_since) {
     const minutesOOR = Math.floor((Date.now() - new Date(pos.out_of_range_since).getTime()) / 60000);
     if (minutesOOR >= mgmtConfig.outOfRangeWaitMinutes) {
+      // If trailing TP is active and current PnL is still positive, let trailing TP handle exit
+      // This prevents closing profitable positions just because they're OOR
+      if (pos.trailing_active && currentPnlPct != null && currentPnlPct > 0) {
+        log("state", `Position ${position_address} OOR ${minutesOOR}m but trailing TP active with +${currentPnlPct.toFixed(2)}% PnL — letting trailing TP handle exit`);
+        return null; // Don't close, let trailing TP lock profit
+      }
+      
       return {
         action: "OUT_OF_RANGE",
         reason: `Out of range for ${minutesOOR}m (limit: ${mgmtConfig.outOfRangeWaitMinutes}m)`,
