@@ -990,15 +990,26 @@ function getDeterministicCloseRule(position, managementConfig) {
     position.upper_bin != null &&
     position.active_bin > position.upper_bin + managementConfig.outOfRangeBinsToClose
   ) {
-    // Hold if high yield + OOR kanan (above range) + good efficiency
+    // Hold if OOR kanan (above range) for fresh positions or high yield for mature positions
     // Let trailing TP / stop loss protect profit instead of immediate close
     const yield24h = position.fee_per_tvl_24h || 0;
-    const efficiency = position.range_efficiency || 0;
+    const ageMin = position.age_minutes || 0;
     
-    if (yield24h > 30 && efficiency > 80) {
-      return null; // Hold - high yield position, let it run
+    console.log(`[RULE3_DEBUG] Pool: ${position.pool_symbol || 'unknown'}, yield24h: ${yield24h.toFixed(2)}%, age: ${ageMin}m, active_bin: ${position.active_bin}, upper_bin: ${position.upper_bin}`);
+    
+    // Fresh positions (< 30m): hold if OOR kanan, let them generate fees
+    if (ageMin < 30) {
+      console.log(`[RULE3_DEBUG] → HOLD (fresh position, age < 30m)`);
+      return null;
     }
     
+    // Mature positions (>= 30m): hold if yield > 10%/24h
+    if (yield24h > 10) {
+      console.log(`[RULE3_DEBUG] → HOLD (high yield ${yield24h.toFixed(1)}% > 10%)`);
+      return null;
+    }
+    
+    console.log(`[RULE3_DEBUG] → CLOSE (age ${ageMin}m, yield ${yield24h.toFixed(2)}% < 10%)`);
     return { action: "CLOSE", rule: 3, reason: "pumped far above range" };
   }
   if (
