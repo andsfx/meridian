@@ -1052,10 +1052,15 @@ function buildGmgnFunnelReport(stageCounts, allFiltered = [], { fromStage = 1 } 
     .map(([key, items]) => {
       const label = stageLabels[key] || (key === "sundefined" ? "Other" : key);
       // S5 pick: render as multi-line with 🕐 icon
-      if (key === "s5" && items.length > 0 && typeof items[0] === 'object') {
+      if (key === "s5" && items.length > 0) {
         const lines = items.map((it, idx) => {
           const sep = idx < items.length - 1 ? "\n\n" : "";
-          return `  🕐 ${it.name} ${it.reason}\n     ${it.stats.join(' · ')}${sep}`;
+          // Check if this specific item is an object (cooldown format)
+          if (typeof it === 'object' && it !== null) {
+            return `  🕐 ${it.name} ${it.reason}\n     ${it.stats.join(' · ')}${sep}`;
+          }
+          // Otherwise it's a string, use normal format
+          return `  • ${it}${sep}`;
         });
         return `<b>${label}</b>\n${lines.join("")}`;
       }
