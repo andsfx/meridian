@@ -2,7 +2,7 @@ import { config } from "../config.js";
 import { isBlacklisted } from "../token-blacklist.js";
 import { isDevBlocked, getBlockedDevs } from "../dev-blocklist.js";
 import { log } from "../logger.js";
-import { isBaseMintOnCooldown, isPoolOnCooldown, getPoolMemory } from "../pool-memory.js";
+import { isBaseMintOnCooldown, isPoolOnCooldown, getPoolMemory, getCooldownInfo } from "../pool-memory.js";
 import { confirmIndicatorPreset } from "./chart-indicators.js";
 import { discoverGmgnPools } from "./gmgn.js";
 import { checkSmartWalletsOnPool } from "../smart-wallets.js";
@@ -687,13 +687,19 @@ export async function getTopCandidates({ limit = 10 } = {}) {
         return false;
       }
       if (isPoolOnCooldown(p.pool)) {
-        log("screening", `Filtered cooldown pool ${p.name} (${p.pool.slice(0, 8)})`);
-        pushFilteredReason(filteredOut, p, "pool cooldown active", 5);
+        const cooldownInfo = getCooldownInfo(p.pool);
+        const until = cooldownInfo?.pool_cooldown_until || 'unknown';
+        const remaining = cooldownInfo?.remaining_hours ? `${cooldownInfo.remaining_hours.toFixed(1)} hours` : 'unknown';
+        log("screening", `Filtered cooldown pool ${p.name} (${p.pool.slice(0, 8)}) — expires at ${until} (in ${remaining})`);
+        pushFilteredReason(filteredOut, p, `pool cooldown active (expires in ${remaining})`, 5);
         return false;
       }
       if (isBaseMintOnCooldown(p.base?.mint)) {
-        log("screening", `Filtered cooldown token ${p.base?.symbol} (${p.base?.mint?.slice(0, 8)})`);
-        pushFilteredReason(filteredOut, p, "token cooldown active", 5);
+        const cooldownInfo = getCooldownInfo(p.base?.mint);
+        const until = cooldownInfo?.base_mint_cooldown_until || 'unknown';
+        const remaining = cooldownInfo?.remaining_hours ? `${cooldownInfo.remaining_hours.toFixed(1)} hours` : 'unknown';
+        log("screening", `Filtered cooldown token ${p.base?.symbol} (${p.base?.mint?.slice(0, 8)}) — expires at ${until} (in ${remaining})`);
+        pushFilteredReason(filteredOut, p, `token cooldown active (expires in ${remaining})`, 5);
         return false;
       }
       return true;
