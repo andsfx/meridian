@@ -21,6 +21,7 @@ import { blockDev, unblockDev, listBlockedDevs } from "../dev-blocklist.js";
 import { addSmartWallet, removeSmartWallet, listSmartWallets, checkSmartWalletsOnPool } from "../smart-wallets.js";
 import { getTokenInfo, getTokenHolders, getTokenNarrative } from "./token.js";
 import { config, reloadScreeningThresholds, MIN_SAFE_BINS_BELOW } from "../config.js";
+import { logConfigChange } from "./config-change-logger.js";
 import { getRecentDecisions } from "../decision-log.js";
 import fs from "fs";
 import { execSync, spawn } from "child_process";
@@ -507,10 +508,12 @@ const toolMap = {
         if (!config[section][field] || typeof config[section][field] !== "object") config[section][field] = {};
         const before = config[section][field][third];
         config[section][field][third] = val;
+        logConfigChange(`${section}.${field}.${third}`, before, val, reason, "manual");
         log("config", `update_config: config.${section}.${field}.${third} ${redactConfigValue(key, before)} → ${redactConfigValue(key, val)}`);
       } else {
         const before = config[section][field];
         config[section][field] = val;
+        logConfigChange(`${section}.${field}`, before, val, reason, "manual");
         log("config", `update_config: config.${section}.${field} ${redactConfigValue(key, before)} → ${redactConfigValue(key, val)} (verify: ${redactConfigValue(key, config[section][field])})`);
       }
     }
