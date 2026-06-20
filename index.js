@@ -685,6 +685,9 @@ Positions: ${prePositions.total_positions}/${config.risk.maxPositions} | SOL: ${
 PRE-LOADED CANDIDATES (${passing.length} pools):
 ${candidateBlocks.join("\n\n")}
 
+${combined.length > 0 ? `FILTERED OUT (${combined.length} pools — already rejected by hard filters, do NOT reconsider):
+${combined.slice(0, 10).map(entry => `  • ${entry.name}: ${entry.reason}`).join("\n")}
+` : ""}
 STEPS:
 1. Decide whether any candidate is worth deploying. A single remaining candidate is not automatically good enough.
 2. Pick the best candidate only if it has real conviction from narrative quality, smart wallets, and pool metrics. If the list has only one pool and it lacks narrative or smart-wallet confirmation, skip the cycle.
@@ -737,10 +740,10 @@ STEPS:
    Name/None
 
    <b>WHY SKIPPED</b>
-   [2-4 sentences explaining why nothing was good enough>
+   [2-4 sentences explaining why nothing was good enough]
 
    <b>REJECTED</b>
-   [list reasons]
+   [Use the FILTERED OUT reasons above — do NOT make up new comparisons or thresholds]
 IMPORTANT:
 - Keep the whole report compact and highly scannable for Telegram.
       `, config.llm.maxSteps, [], "SCREENER", config.llm.screeningModel, 2048, {
