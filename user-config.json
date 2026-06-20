@@ -25,7 +25,7 @@
   ],
   "category": "top",
   "excludeHighSupplyConcentration": true,
-  "minTvl": 3630,
+  "minTvl": 3000,
   "maxTvl": 250000,
   "minVolume": 5000,
   "minOrganic": 60,
