@@ -199,18 +199,20 @@ export function recordPoolDeploy(poolAddress, deployData) {
     const rawScope = String(config.management.repeatDeployCooldownScope || "token").toLowerCase();
     const scope = ["pool", "token", "both"].includes(rawScope) ? rawScope : "token";
     const recentRepeatDeploys = entry.deploys.slice(-triggerCount);
-    const repeatedFeeGeneratingDeploys =
+
+    // Only cooldown on repeated LOSSES or OOR closes, NOT on profitable deploys
+    const repeatedLosses =
       cooldownHours > 0 &&
       recentRepeatDeploys.length >= triggerCount &&
-      recentRepeatDeploys.every((d) => d.pnl_pct != null && isFeeGeneratingDeploy(d));
+      recentRepeatDeploys.every((d) => d.pnl_pct != null && d.pnl_pct < 0);
 
-    // New: Trigger on repeated Rule 3 closes
+    // Trigger on repeated Rule 3 (OOR) closes
     const repeatedRule3Closes =
       recentRepeatDeploys.length >= triggerCount &&
       recentRepeatDeploys.filter((d) => isOorCloseReason(d.close_reason)).length >= Math.ceil(triggerCount * 0.5);
 
-    if (repeatedFeeGeneratingDeploys || repeatedRule3Closes) {
-      const reason = repeatedRule3Closes ? `repeated Rule 3 closes (${triggerCount}x)` : `repeat fee-generating deploys (${triggerCount}x)`;
+    if (repeatedLosses || repeatedRule3Closes) {
+      const reason = repeatedRule3Closes ? `repeated OOR closes (${triggerCount}x)` : `repeated losses (${triggerCount}x)`;
       if (scope === "pool" || scope === "both" || !entry.base_mint) {
         const poolCooldownUntil = setPoolCooldown(entry, cooldownHours, reason);
         log("pool-memory", `Cooldown set for ${entry.name} until ${poolCooldownUntil} (${reason})`);
@@ -434,4 +436,61 @@ export function addPoolNote({ pool_address, note }) {
   save(db);
   log("pool-memory", `Note added to ${pool_address.slice(0, 8)}: ${safeNote}`);
   return { saved: true, pool_address, note: safeNote };
+}
+
+// Get detailed cooldown info for a pool or base mint
+export function getCooldownInfo(identifier) {
+  const db = load();
+  const now = new Date();
+  
+  let entry = db[identifier];
+  
+  if (!entry) {
+    for (const [addr, e] of Object.entries(db)) {
+      if (e.base_mint === identifier) {
+        entry = e;
+        break;
+      }
+    }
+  }
+  
+  if (!entry) return null;
+  
+  const result = {
+    name: entry.name,
+    pool_address: identifier in db ? identifier : Object.keys(db).find(addr => db[addr].base_mint === entry.base_mint),
+    base_mint: entry.base_mint,
+    has_cooldown: false,
+    pool_cooldown_until: null,
+    pool_cooldown_reason: null,
+    base_mint_cooldown_until: null,
+    base_mint_cooldown_reason: null,
+    remaining_hours: 0,
+    is_exempt: false
+  };
+  
+  if (entry.cooldown_until && new Date(entry.cooldown_until) > now) {
+    result.has_cooldown = true;
+    result.pool_cooldown_until = entry.cooldown_until;
+    result.pool_cooldown_reason = entry.cooldown_reason;
+  }
+  
+  if (entry.base_mint_cooldown_until && new Date(entry.base_mint_cooldown_until) > now) {
+    result.has_cooldown = true;
+    result.base_mint_cooldown_until = entry.base_mint_cooldown_until;
+    result.base_mint_cooldown_reason = entry.base_mint_cooldown_reason;
+  }
+  
+  const poolExpires = result.pool_cooldown_until ? new Date(result.pool_cooldown_until) : null;
+  const mintExpires = result.base_mint_cooldown_until ? new Date(result.base_mint_cooldown_until) : null;
+  const expiresAt = poolExpires && mintExpires ? 
+    (poolExpires > mintExpires ? poolExpires : mintExpires) :
+    poolExpires || mintExpires;
+  
+  if (expiresAt) {
+    const remainingMs = expiresAt - now;
+    result.remaining_hours = Math.max(0, remainingMs / (1000 * 60 * 60));
+  }
+  
+  return result;
 }
