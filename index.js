@@ -548,8 +548,9 @@ export async function runScreeningCycle({ silent = false } = {}) {
       return true;
     });
 
+    const combined = filteredOut.length > 0 ? filteredOut : earlyFilteredExamples;
+
     if (passing.length === 0) {
-      const combined = filteredOut.length > 0 ? filteredOut : earlyFilteredExamples;
       const combinedExamples = combined.slice(0, 5)
         .map((entry) => `  • ${entry.name}: ${entry.reason}`)
         .join("\n");
