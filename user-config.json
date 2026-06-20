@@ -120,7 +120,7 @@
   "screeningSource": "both",
   "risk": {
     "maxDeployAmount": 0.5,
-    "maxPositions": 3
+    "maxPositions": 4
   },
   "management": {
     "positionSizePct": 0.35,
@@ -207,5 +207,6 @@
   "lastEvolve_minTvl": 1781953107483,
   "lastEvolve_minHolders": 1781953107483,
   "lastEvolve_minVolume": 1781953107483,
-  "lastEvolve_minMcap": 1781953107483
+  "lastEvolve_minMcap": 1781953107483,
+  "maxPositions": 4
 }
