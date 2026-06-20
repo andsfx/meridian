@@ -1028,15 +1028,37 @@ function buildGmgnFunnelReport(stageCounts, allFiltered = [], { fromStage = 1 } 
     if (f.organic != null) stats.push(`org ${f.organic}%`);
     if (f.holders != null) stats.push(`hld ${f.holders}`);
     if (f.age_hours != null) stats.push(`age ${Number(f.age_hours).toFixed(0)}h`);
-    const detailLine = stats.length > 0
-      ? `${f.name}: ${f.reason} (${stats.join(' · ')})`
-      : `${f.name}: ${f.reason}`;
-    byStage[key].push(detailLine);
+    
+    // Detect cooldown reason and format as "on cooldown (Xh Ym left)"
+    let reason = f.reason;
+    const cooldownMatch = reason.match(/token cooldown \(([^)]+)\)/);
+    if (cooldownMatch) {
+      const remaining = cooldownMatch[1];
+      reason = `on cooldown (${remaining})`;
+    }
+    
+    // S5 pick: special format with 🕐 icon and indented stats
+    if (key === "s5" && cooldownMatch) {
+      byStage[key].push({ name: f.name, reason, stats });
+    } else {
+      const detailLine = stats.length > 0
+        ? `${f.name}: ${reason} (${stats.join(' · ')})`
+        : `${f.name}: ${reason}`;
+      byStage[key].push(detailLine);
+    }
   }
   const stageLabels = { s1: "S1 ranked", s2: "S2 info", s3: "S3 pool", s4: "S4 indicators", s5: "S5 pick" };
   const details = Object.entries(byStage)
     .map(([key, items]) => {
       const label = stageLabels[key] || (key === "sundefined" ? "Other" : key);
+      // S5 pick: render as multi-line with 🕐 icon
+      if (key === "s5" && items.length > 0 && typeof items[0] === 'object') {
+        const lines = items.map((it, idx) => {
+          const sep = idx < items.length - 1 ? "\n\n" : "";
+          return `  🕐 ${it.name} ${it.reason}\n     ${it.stats.join(' · ')}${sep}`;
+        });
+        return `<b>${label}</b>\n${lines.join("")}`;
+      }
       return `<b>${label}</b>\n${items.map(r => `  • ${r}`).join("\n")}`;
     })
     .join("\n\n");
