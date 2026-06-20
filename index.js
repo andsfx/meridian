@@ -990,6 +990,15 @@ function getDeterministicCloseRule(position, managementConfig) {
     position.upper_bin != null &&
     position.active_bin > position.upper_bin + managementConfig.outOfRangeBinsToClose
   ) {
+    // Hold if high yield + OOR kanan (above range) + good efficiency
+    // Let trailing TP / stop loss protect profit instead of immediate close
+    const yield24h = position.fee_per_tvl_24h || 0;
+    const efficiency = position.range_efficiency || 0;
+    
+    if (yield24h > 30 && efficiency > 80) {
+      return null; // Hold - high yield position, let it run
+    }
+    
     return { action: "CLOSE", rule: 3, reason: "pumped far above range" };
   }
   if (
@@ -1034,7 +1043,9 @@ function buildGmgnFunnelReport(stageCounts, allFiltered = [], { fromStage = 1 } 
     const cooldownMatch = reason.match(/token cooldown \(([^)]+)\)/);
     if (cooldownMatch) {
       const remaining = cooldownMatch[1];
-      reason = `on cooldown (${remaining})`;
+      // Convert "remaining" to "left" if present
+      const leftText = remaining.replace(/remaining$/, 'left');
+      reason = `on cooldown (${leftText})`;
     }
     
     // S5 pick: special format with 🕐 icon and indented stats
