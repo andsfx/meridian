@@ -116,8 +116,8 @@
   "llmModelLearn": "dahono/deepseek-v4-flash",
   "screeningSource": "both",
   "risk": {
-    "maxDeployAmount": 0.5,
-    "maxPositions": 4
+    "maxDeployAmount": 0.25,
+    "maxPositions": 2
   },
   "management": {
     "positionSizePct": 0.35,
@@ -128,7 +128,10 @@
     "outOfRangeBinsToClose": 100,
     "takeProfitPct": 10,
     "trailingTriggerPct": 5,
-    "trailingDropPct": 1.5
+    "trailingDropPct": 1.5,
+    "deployAmountSol": 0.2,
+    "gasReserve": 0.08,
+    "minSolToOpen": 0.48
   },
   "minBinsBelow": 40,
   "maxBinsBelow": 52,
