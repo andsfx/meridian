@@ -1,0 +1,40 @@
+{
+  "tokens": {
+    "TESTDouble1781452413030": {
+      "symbol": "TEST",
+      "triggeredByPnlPct": -3,
+      "reason": "out of range",
+      "badCount": 1,
+      "losses": 1,
+      "oor": 1,
+      "lowYield": 0,
+      "updatedAt": "2026-06-14T15:53:33.032Z",
+      "permanent": false,
+      "cooldownUntil": "2026-06-14T16:23:33.032Z"
+    },
+    "2dJniDEAGCG7zWKseCkyrML3W23WLjDf1CGxpNv3pump": {
+      "symbol": "TURTLE-SOL",
+      "triggeredByPnlPct": -0.0062978090992867825,
+      "reason": "Emergency instant close: PnL -100% <= -10% (catastrophic move protection). Trailing TP triggered.",
+      "badCount": 1,
+      "losses": 1,
+      "oor": 0,
+      "lowYield": 0,
+      "updatedAt": "2026-06-14T19:16:49.943Z",
+      "permanent": false,
+      "cooldownUntil": "2026-06-14T19:46:49.943Z"
+    },
+    "yoA2CoHk6HRNtFuTP1kVt5xkcvG7mr5raQ5zuNxpump": {
+      "symbol": "Islands-SOL",
+      "triggeredByPnlPct": -0.3825903727060356,
+      "reason": "OOR - pumped above range (active -365 above upper -376), oor 21min, fee_per_tvl 0.07%",
+      "badCount": 1,
+      "losses": 1,
+      "oor": 1,
+      "lowYield": 0,
+      "updatedAt": "2026-06-15T01:22:37.387Z",
+      "permanent": false,
+      "cooldownUntil": "2026-06-15T01:52:37.387Z"
+    }
+  }
+}

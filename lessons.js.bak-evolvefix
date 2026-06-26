@@ -7,14 +7,14 @@
  */
 
 import fs from "fs";
+import path from "path";
+import { execFileSync } from "child_process";
 import { log } from "./logger.js";
 import { getSharedLessonsForPrompt, pushHiveLesson, pushHivePerformanceEvent } from "./hivemind.js";
-import { repoPath } from "./repo-root.js";
+import { paths } from "./paths.js";
 
-const USER_CONFIG_PATH = repoPath("user-config.json");
-const STATE_PATH       = repoPath("state.json");
-
-const LESSONS_FILE = repoPath("lessons.json");
+const USER_CONFIG_PATH = paths.userConfigPath;
+const LESSONS_FILE = paths.lessonsPath;
 const MIN_EVOLVE_POSITIONS = 5;   // don't evolve until we have real data
 const MAX_CHANGE_PER_STEP  = 0.20; // never shift a threshold more than 20% at once
 const PERFORMANCE_SIGNAL_FIELDS = [
@@ -23,16 +23,53 @@ const PERFORMANCE_SIGNAL_FIELDS = [
   "volume",
   "mcap",
   "holder_count",
-  "smart_wallets_category",
+  "smart_wallets_present",
   "narrative_quality",
   "study_win_rate",
   "hive_consensus",
   "volatility",
-  "entry_mcap",
-  "entry_tvl",
-  "entry_volume",
 ];
 const MAX_MANUAL_LESSON_LENGTH = 400;
+
+/**
+ * Pull the entry-time metadata for a given position from the action log.
+ * The executor writes a `metadata` block on successful deploy containing
+ * every signal the LLM used: tvl, volume, bot_pct, top10_pct, bundle_pct,
+ * smart_wallets, total_fee_sol, conviction_tier, quality_score, base_fee, etc.
+ * We surface those fields on close so lessons.json has full entry+exit pairs.
+ */
+function getEntryMetadata(positionAddress) {
+  if (!positionAddress) return null;
+  try {
+    const logDir = paths.logDir;
+    // execFileSync with array args so the position address
+    // can never be interpreted as a regex injection.
+    const globPattern = path.join(logDir, "actions-*.jsonl");
+    const out = execFileSync("bash", [
+      "-c",
+      `grep --no-messages '"position":"${positionAddress}"' ${globPattern} || true`
+    ], { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 }).trim();
+    if (!out) return null;
+    // grep with --label prints "filename:line" per match; we want the last deploy.
+    const lines = out.split("\n").filter(Boolean);
+    let lastDeploy = null;
+    for (const line of lines) {
+      try {
+        const jsonStr = line.includes(":{") ? line.substring(line.indexOf(":{") + 1) : line;
+        const parsed = JSON.parse(jsonStr);
+        if (parsed.tool === "deploy_position") {
+          lastDeploy = parsed;
+        }
+      } catch { /* skip malformed */ }
+    }
+    if (!lastDeploy) return null;
+    return lastDeploy.metadata || lastDeploy.args || null;
+  } catch (e) {
+    if (e.status === 1) return null; // grep found no matches
+    log("lessons_warn", `entry_metadata_lookup_failed: ${e.message}`);
+    return null;
+  }
+}
 
 function sanitizeLessonText(text, maxLen = MAX_MANUAL_LESSON_LENGTH) {
   if (text == null) return null;
@@ -50,11 +87,7 @@ function load() {
     return { lessons: [], performance: [] };
   }
   try {
-    const parsed = JSON.parse(fs.readFileSync(LESSONS_FILE, "utf8"));
-    return {
-      lessons: parsed.lessons || [],
-      performance: parsed.performance || []
-    };
+    return JSON.parse(fs.readFileSync(LESSONS_FILE, "utf8"));
   } catch {
     return { lessons: [], performance: [] };
   }
@@ -139,8 +172,28 @@ export async function recordPerformance(perf) {
   }
 
   const signalSnapshot = buildSignalSnapshot(perf);
+
+  // ── Journal: pull full entry-time metrics from the deploy audit log ──
+  const entryMeta = getEntryMetadata(perf.position);
+  const journalFields = entryMeta
+    ? {
+        entry_tvl: entryMeta.tvl ?? null,
+        entry_volume: entryMeta.volume ?? null,
+        entry_base_fee: entryMeta.base_fee ?? null,
+        entry_bot_pct: entryMeta.bot_pct ?? null,
+        entry_top10_pct: entryMeta.top10_pct ?? null,
+        entry_bundle_pct: entryMeta.bundle_pct ?? null,
+        entry_smart_wallets: entryMeta.smart_wallets ?? null,
+        entry_total_fee_sol: entryMeta.total_fee_sol ?? null,
+        entry_conviction_tier: entryMeta.conviction_tier ?? null,
+        entry_quality_score: entryMeta.quality_score ?? null,
+        entry_amount_sol: entryMeta.actual_amount_sol ?? entryMeta.requested_amount_sol ?? perf.amount_sol ?? null,
+      }
+    : {};
+
   const entry = {
     ...perf,
+    ...journalFields,
     signal_snapshot: signalSnapshot,
     pnl_usd: Math.round(pnl_usd * 100) / 100,
     pnl_pct: Math.round(pnl_pct * 100) / 100,
@@ -179,33 +232,29 @@ export async function recordPerformance(perf) {
       fee_earned_pct: perf.initial_value_usd > 0 ? ((perf.fees_earned_usd || 0) / perf.initial_value_usd) * 100 : null,
       close_reason: perf.close_reason,
       strategy: perf.strategy,
-      volatility: perf.volatility,
-      entry_mcap: perf.entry_mcap,
-      entry_tvl: perf.entry_tvl,
-      entry_volume: perf.entry_volume,
-      exit_mcap: perf.exit_mcap,
-      exit_tvl: perf.exit_tvl,
-      exit_volume: perf.exit_volume,
+      volatility_at_deploy: perf.volatility_at_deploy,
     });
   }
 
-  // Evolve thresholds every 5 closed positions
-  if (data.performance.length % MIN_EVOLVE_POSITIONS === 0) {
-    const { config, reloadScreeningThresholds } = await import("./config.js");
-    const result = evolveThresholds(data.performance, config);
+  // Auto-evolve thresholds after every close so screening adapts to the recent market regime
+  try {
+    const { config: cfg, reloadScreeningThresholds } = await import("./config.js");
+    const result = evolveThresholds(data.performance, cfg);
     if (result?.changes && Object.keys(result.changes).length > 0) {
       reloadScreeningThresholds();
       log("evolve", `Auto-evolved thresholds: ${JSON.stringify(result.changes)}`);
     }
 
     // Darwinian signal weight recalculation
-    if (config.darwin?.enabled) {
+    if (cfg.darwin?.enabled) {
       const { recalculateWeights } = await import("./signal-weights.js");
-      const wResult = recalculateWeights(data.performance, config);
+      const wResult = recalculateWeights(data.performance, cfg);
       if (wResult.changes.length > 0) {
         log("evolve", `Darwin: adjusted ${wResult.changes.length} signal weight(s)`);
       }
     }
+  } catch (err) {
+    log("lessons_warn", "Auto-evolve failed: " + err.message);
   }
 
   void pushHivePerformanceEvent({
@@ -236,9 +285,8 @@ function derivLesson(perf) {
 
   if (outcome === "neutral") return null; // nothing interesting to learn
 
-  // Build context description with entry/exit market conditions
-  const fmtNum = (n) => n == null ? "?" : n >= 1_000_000 ? `${(n/1_000_000).toFixed(1)}M` : n >= 1_000 ? `${(n/1_000).toFixed(0)}K` : String(Math.round(n));
-  const contextParts = [
+  // Build context description
+  const context = [
     `${perf.pool_name}`,
     `strategy=${perf.strategy}`,
     `bin_step=${perf.bin_step}`,
@@ -246,15 +294,7 @@ function derivLesson(perf) {
     `fee_tvl_ratio=${perf.fee_tvl_ratio}`,
     `organic=${perf.organic_score}`,
     `bin_range=${typeof perf.bin_range === 'object' ? JSON.stringify(perf.bin_range) : perf.bin_range}`,
-    `held=${perf.minutes_held}m`,
-  ];
-  if (perf.entry_mcap != null || perf.entry_tvl != null || perf.entry_volume != null) {
-    contextParts.push(`entry(mcap=${fmtNum(perf.entry_mcap)}, tvl=${fmtNum(perf.entry_tvl)}, vol=${fmtNum(perf.entry_volume)})`);
-  }
-  if (perf.exit_mcap != null || perf.exit_tvl != null || perf.exit_volume != null) {
-    contextParts.push(`exit(mcap=${fmtNum(perf.exit_mcap)}, tvl=${fmtNum(perf.exit_tvl)}, vol=${fmtNum(perf.exit_volume)})`);
-  }
-  const context = contextParts.join(", ");
+  ].join(", ");
 
   let rule = "";
 
@@ -263,8 +303,7 @@ function derivLesson(perf) {
       rule = `AVOID: ${perf.pool_name}-type pools (volatility=${perf.volatility}, bin_step=${perf.bin_step}) with strategy="${perf.strategy}" — went OOR ${100 - perf.range_efficiency}% of the time. Consider wider bin_range or bid_ask strategy.`;
       tags.push("oor", perf.strategy, `volatility_${Math.round(perf.volatility)}`);
     } else if (perf.range_efficiency > 80 && outcome === "good") {
-      const entryNote = perf.entry_mcap != null ? ` Entry: mcap=${fmtNum(perf.entry_mcap)}, tvl=${fmtNum(perf.entry_tvl)}, vol=${fmtNum(perf.entry_volume)}.` : "";
-      rule = `PREFER: ${perf.pool_name}-type pools (volatility=${perf.volatility}, bin_step=${perf.bin_step}) with strategy="${perf.strategy}" — ${perf.range_efficiency}% in-range efficiency, PnL +${perf.pnl_pct}%.${entryNote}`;
+      rule = `PREFER: ${perf.pool_name}-type pools (volatility=${perf.volatility}, bin_step=${perf.bin_step}) with strategy="${perf.strategy}" — ${perf.range_efficiency}% in-range efficiency, PnL +${perf.pnl_pct}%.`;
       tags.push("efficient", perf.strategy);
     } else if (outcome === "bad" && perf.close_reason?.includes("volume")) {
       rule = `AVOID: Pools with fee_tvl_ratio=${perf.fee_tvl_ratio} that showed volume collapse — fees evaporated quickly. Minimum sustained volume check needed before deploying.`;
@@ -314,15 +353,8 @@ function derivLesson(perf) {
     fees_earned_usd: perf.fees_earned_usd,
     initial_value_usd: perf.initial_value_usd,
     range_efficiency: perf.range_efficiency,
-    minutes_held: perf.minutes_held ?? null,
     close_reason: perf.close_reason,
     pool: perf.pool,
-    entry_mcap: perf.entry_mcap ?? null,
-    entry_tvl: perf.entry_tvl ?? null,
-    entry_volume: perf.entry_volume ?? null,
-    exit_mcap: perf.exit_mcap ?? null,
-    exit_tvl: perf.exit_tvl ?? null,
-    exit_volume: perf.exit_volume ?? null,
     created_at: new Date().toISOString(),
   };
 }
@@ -340,10 +372,8 @@ function derivLesson(perf) {
 export function evolveThresholds(perfData, config) {
   if (!perfData || perfData.length < MIN_EVOLVE_POSITIONS) return null;
 
-  const EVOLVE_WINDOW = config.darwin?.evolveWindow ?? 150;
-  const windowData = perfData.slice(-EVOLVE_WINDOW);
-  const winners = windowData.filter((p) => p.pnl_pct > 0);
-  const losers  = windowData.filter((p) => p.pnl_pct < -5);
+  const winners = perfData.filter((p) => p.pnl_pct > 0);
+  const losers  = perfData.filter((p) => p.pnl_pct < -5);
 
   // Need at least some signal in both directions before adjusting
   const hasSignal = winners.length >= 2 || losers.length >= 2;
@@ -352,7 +382,43 @@ export function evolveThresholds(perfData, config) {
   const changes   = {};
   const rationale = {};
 
-  // ── 1. minFeeActiveTvlRatio ────────────────────────────────────
+  // ── 1. maxVolatility ─────────────────────────────────────────
+  // If losers tend to cluster at higher volatility → tighten the ceiling.
+  // If winners span higher volatility safely → we can loosen a bit.
+  {
+    const winnerVols = winners.map((p) => p.volatility).filter(isFiniteNum);
+    const loserVols  = losers.map((p) => p.volatility).filter(isFiniteNum);
+    const current    = config.screening.maxVolatility;
+
+    if (loserVols.length >= 2) {
+      // 25th percentile of loser volatilities — this is where things start going wrong
+      const loserP25 = percentile(loserVols, 25);
+      if (loserP25 < current) {
+        // Tighten: new ceiling = loserP25 + a small buffer
+        const target  = loserP25 * 1.15;
+        const newVal  = clamp(nudge(current, target, MAX_CHANGE_PER_STEP), 1.0, 20.0);
+        const rounded = Number(newVal.toFixed(1));
+        if (rounded < current) {
+          changes.maxVolatility = rounded;
+          rationale.maxVolatility = `Losers clustered at volatility ~${loserP25.toFixed(1)} — tightened from ${current} → ${rounded}`;
+        }
+      }
+    } else if (winnerVols.length >= 3 && losers.length === 0) {
+      // All winners so far — loosen conservatively so we don't miss good pools
+      const winnerP75 = percentile(winnerVols, 75);
+      if (winnerP75 > current * 1.1) {
+        const target  = winnerP75 * 1.1;
+        const newVal  = clamp(nudge(current, target, MAX_CHANGE_PER_STEP), 1.0, 20.0);
+        const rounded = Number(newVal.toFixed(1));
+        if (rounded > current) {
+          changes.maxVolatility = rounded;
+          rationale.maxVolatility = `All ${winners.length} positions profitable — loosened from ${current} → ${rounded}`;
+        }
+      }
+    }
+  }
+
+  // ── 2. minFeeActiveTvlRatio ─────────────────────────────────────────
   // Raise the floor if low-fee pools consistently underperform.
   {
     const winnerFees = winners.map((p) => p.fee_tvl_ratio).filter(isFiniteNum);
@@ -361,7 +427,7 @@ export function evolveThresholds(perfData, config) {
 
     if (winnerFees.length >= 2) {
       // Minimum fee/TVL among winners — we know pools below this don't work for us
-      const minWinnerFee = percentile(winnerFees, 10);
+      const minWinnerFee = Math.min(...winnerFees);
       if (minWinnerFee > current * 1.2) {
         const target  = minWinnerFee * 0.85; // stay slightly below min winner
         const newVal  = clamp(nudge(current, target, MAX_CHANGE_PER_STEP), 0.05, 10.0);
@@ -378,7 +444,7 @@ export function evolveThresholds(perfData, config) {
       // But if losers had low fee/TVL, raise min
       const maxLoserFee = Math.max(...loserFees);
       if (maxLoserFee < current * 1.5 && winnerFees.length > 0) {
-        const minWinnerFee = percentile(winnerFees, 10);
+        const minWinnerFee = Math.min(...winnerFees);
         if (minWinnerFee > maxLoserFee) {
           const target  = maxLoserFee * 1.2;
           const newVal  = clamp(nudge(current, target, MAX_CHANGE_PER_STEP), 0.05, 10.0);
@@ -392,7 +458,7 @@ export function evolveThresholds(perfData, config) {
     }
   }
 
-  // ── 2. minOrganic ─────────────────────────────────────────────
+  // ── 3. minOrganic ─────────────────────────────────────────────
   // Raise organic floor if low-organic tokens consistently failed.
   {
     const loserOrganics  = losers.map((p) => p.organic_score).filter(isFiniteNum);
@@ -400,241 +466,20 @@ export function evolveThresholds(perfData, config) {
     const current        = config.screening.minOrganic;
 
     if (loserOrganics.length >= 2 && winnerOrganics.length >= 1) {
-      const p25LoserOrganic  = percentile(loserOrganics, 25);
-      const p75WinnerOrganic = percentile(winnerOrganics, 75);
+      const avgLoserOrganic  = avg(loserOrganics);
+      const avgWinnerOrganic = avg(winnerOrganics);
       // Only raise if there's a clear gap (winners consistently more organic)
-      if (p75WinnerOrganic - p25LoserOrganic >= 10) {
+      if (avgWinnerOrganic - avgLoserOrganic >= 10) {
         // Set floor just below worst winner
         const minWinnerOrganic = Math.min(...winnerOrganics);
         const target = Math.max(minWinnerOrganic - 3, current);
         const newVal = clamp(Math.round(nudge(current, target, MAX_CHANGE_PER_STEP)), 60, 90);
         if (newVal > current) {
           changes.minOrganic = newVal;
-          rationale.minOrganic = `Winner 75th pct organic ${p75WinnerOrganic.toFixed(0)} vs loser 25th pct ${p25LoserOrganic.toFixed(0)} — raised from ${current} → ${newVal}`;
-        }
-      }
-
-      // Downward adjustment: if avg losers had higher organic than current floor,
-      // current threshold is filtering out winners we previously captured. Lower it.
-      const avgLoserOrganic = avg(loserOrganics);
-      if (winnerOrganics.length >= 1 && avgLoserOrganic > current) {
-        const target = Math.min(avgLoserOrganic + 3, current);
-        const newVal = clamp(Math.round(nudge(current, target, MAX_CHANGE_PER_STEP)), 60, 90);
-        if (newVal < current) {
-          changes.minOrganic = newVal;
-          rationale.minOrganic = `Avg loser organic ${avgLoserOrganic.toFixed(0)} above current floor ${current} — lowering threshold to ${newVal} to recapture winners`;
+          rationale.minOrganic = `Winner avg organic ${avgWinnerOrganic.toFixed(0)} vs loser avg ${avgLoserOrganic.toFixed(0)} — raised from ${current} → ${newVal}`;
         }
       }
     }
-  }
-
-  // ── 3. stopLossPct ─────────────────────────────────────────────
-  // Evolve based on fee recovery vs loss severity.
-  // Tighten (more negative) if positions surviving > -5% but < 0% have high fee recovery.
-  // Loosen (less negative) if positions closing at -5% to -10% have low fee recovery.
-  {
-    const current = config.management?.stopLossPct ?? -10;
-    const borderlineLosers = windowData.filter((p) => p.pnl_pct != null && p.pnl_pct >= -10 && p.pnl_pct < 0);
-    const deepLosers = windowData.filter((p) => p.pnl_pct != null && p.pnl_pct < -10);
-
-    if (borderlineLosers.length >= 2) {
-      // Calculate fee recovery ratio (fees_earned_usd / |pnl_usd|)
-      const feeRecoveryRatios = borderlineLosers
-        .map((p) => (p.fees_earned_usd || 0) / Math.abs(p.pnl_usd || 1))
-        .filter(isFiniteNum);
-      
-      if (feeRecoveryRatios.length >= 2) {
-        const avgFeeRecovery = avg(feeRecoveryRatios);
-        if (avgFeeRecovery > 1.5) {
-          // Fees cover losses well — tighten SL (more negative)
-          const target = current * 1.1; // 10% more negative
-          const newVal = clamp(Math.round(target), -50, -1);
-          if (newVal < current) { // More negative
-            changes.stopLossPct = newVal;
-            rationale.stopLossPct = `Borderline losers (>-10%) have high fee recovery (${avgFeeRecovery.toFixed(2)}) — tightened SL from ${current}% → ${newVal}%`;
-          }
-        } else if (avgFeeRecovery < 0.5 && deepLosers.length === 0) {
-          // Low fee recovery, no deep losers — loosen SL (less negative)
-          const target = current * 0.9; // 10% less negative
-          const newVal = clamp(Math.round(target), -50, -1);
-          if (newVal > current) { // Less negative
-            changes.stopLossPct = newVal;
-            rationale.stopLossPct = `Borderline losers have low fee recovery (${avgFeeRecovery.toFixed(2)}) — loosened SL from ${current}% → ${newVal}%`;
-          }
-        }
-      }
-    }
-  }
-
-  // ── 4. binsAbove ───────────────────────────────────────────────
-  // Evolve based on Rule 3 close frequency vs volatility.
-  // Increase if Rule 3 closes occur in pools with volatility ≥ 7.
-  // Decrease if Rule 3 closes occur in pools with volatility < 7.
-  {
-    const rule3Closes = windowData.filter((p) => p.close_reason?.includes('Rule 3') || p.close_reason?.includes('pumped far above range'));
-    const highVolRule3 = rule3Closes.filter((p) => (p.volatility || 0) >= 7);
-    const lowVolRule3 = rule3Closes.filter((p) => (p.volatility || 0) < 7);
-    const current = config.binsAbove ?? 0;
-
-    if (rule3Closes.length >= 2) {
-      if (highVolRule3.length > lowVolRule3.length) {
-        // More Rule 3 closes in high vol — increase binsAbove
-        const target = current + 1;
-        const newVal = clamp(target, 0, 50);
-        if (newVal > current) {
-          changes.binsAbove = newVal;
-          rationale.binsAbove = `More Rule 3 closes in high vol (≥7) pools (${highVolRule3.length} vs ${lowVolRule3.length}) — increased binsAbove from ${current} → ${newVal}`;
-        }
-      } else if (lowVolRule3.length > highVolRule3.length) {
-        // More Rule 3 closes in low vol — decrease binsAbove (but not below 0)
-        const target = Math.max(0, current - 1);
-        const newVal = clamp(target, 0, 50);
-        if (newVal < current) {
-          changes.binsAbove = newVal;
-          rationale.binsAbove = `More Rule 3 closes in low vol (<7) pools (${lowVolRule3.length} vs ${highVolRule3.length}) — decreased binsAbove from ${current} → ${newVal}`;
-        }
-      }
-    }
-  }
-
-  // ── 4. minBinStep ───────────────────────────────────────────────
-  // Evolve based on volatility and performance.
-  // Lower minBinStep for high volatility pools if they perform well.
-  // Raise minBinStep for low volatility pools if they underperform.
-  {
-    const current = config.screening.minBinStep;
-    
-    // Group by volatility tier
-    const highVol = windowData.filter(p => p.volatility >= 6);
-    const lowVol = windowData.filter(p => p.volatility < 3);
-    
-    // High volatility winners with low bin_step
-    const highVolWinnersLowBin = highVol.filter(p => p.pnl_pct > 0 && p.bin_step < current);
-    if (highVolWinnersLowBin.length >= 2) {
-      // Find the highest performing bin_step below current
-      const bestBinStep = Math.max(...highVolWinnersLowBin.map(p => p.bin_step));
-      const target = Math.max(bestBinStep, 80); // Don't go below 80
-      if (target < current) {
-        changes.minBinStep = target;
-        rationale.minBinStep = `High volatility winners performed well at bin_step ${bestBinStep} — lowered from ${current} → ${target}`;
-      }
-    }
-    
-    // Low volatility losers with current bin_step
-    const lowVolLosers = lowVol.filter(p => p.pnl_pct < 0 && p.bin_step === current);
-    if (lowVolLosers.length >= 2) {
-      // Raise minBinStep to avoid low volatility pools, but cap at 100
-      const target = Math.min(current + 10, 100); // Don't exceed 100
-      if (target > current) {
-        changes.minBinStep = target;
-        rationale.minBinStep = `Low volatility pools underperformed at bin_step ${current} — raised to ${target}`;
-      }
-    }
-  }
-  // Strongest signal in 649-trade audit: 82.6% winrate at 240m+ hold.
-  // Evolve outOfRangeWaitMinutes based on hold-bucket winrate pattern.
-  {
-    const holdBuckets = [
-      { name: "short",  lo: 0,    hi: 60,   mult: 0.5 },
-      { name: "medium", lo: 60,   hi: 240,  mult: 1.0 },
-      { name: "long",   lo: 240,  hi: 720,  mult: 1.0 },
-      { name: "ultra",  lo: 720,  hi: 9e9,  mult: 1.0 },
-    ];
-    const bucketStats = holdBuckets.map(b => {
-      const subset = windowData.filter(p => Number.isFinite(p.minutes_held) && p.minutes_held >= b.lo && p.minutes_held < b.hi);
-      if (subset.length < 2) return { ...b, n: subset.length, winrate: null, avgPnl: null };
-      const wins = subset.filter(p => p.pnl_pct > 0).length;
-      return { ...b, n: subset.length, winrate: wins / subset.length, avgPnl: subset.reduce((s, p) => s + (p.pnl_pct || 0), 0) / subset.length };
-    });
-    const valid = bucketStats.filter(b => b.winrate != null && b.n >= 2);
-    if (valid.length >= 2) {
-      const longBucket = valid.find(b => b.lo >= 240);
-      const shortBucket = valid.find(b => b.hi <= 60);
-      const current = config.management?.outOfRangeWaitMinutes ?? 30;
-      if (longBucket && longBucket.winrate >= 0.7 && (shortBucket == null || longBucket.winrate > shortBucket.winrate + 0.15)) {
-        // Long holds much better than short → raise OOR patience
-        const target = Math.min(current + 15, 120);
-        const newVal = clamp(Math.round(nudge(current, target, MAX_CHANGE_PER_STEP)), 15, 120);
-        if (newVal > current) {
-          changes.outOfRangeWaitMinutes = newVal;
-          rationale.outOfRangeWaitMinutes = `Long holds (${longBucket.lo}-${longBucket.hi}m) winrate ${(longBucket.winrate*100).toFixed(0)}% > short ${shortBucket ? (shortBucket.winrate*100).toFixed(0) + '%' : 'insufficient data'} — raised OOR patience from ${current}m → ${newVal}m`;
-        }
-      } else if (shortBucket && shortBucket.winrate >= 0.7 && (longBucket == null || shortBucket.winrate > longBucket.winrate + 0.15)) {
-        // Short holds better → tighten OOR patience (rare, but data-driven)
-        const target = Math.max(current - 10, 15);
-        const newVal = clamp(Math.round(nudge(current, target, MAX_CHANGE_PER_STEP)), 15, 120);
-        if (newVal < current) {
-          changes.outOfRangeWaitMinutes = newVal;
-          rationale.outOfRangeWaitMinutes = `Short holds winrate ${(shortBucket.winrate*100).toFixed(0)}% > long ${longBucket ? (longBucket.winrate*100).toFixed(0) + '%' : 'insufficient data'} — tightened OOR patience from ${current}m → ${newVal}m`;
-        }
-      }
-    }
-  }
-
-  // ── Funnel Gate Auto-Learn (P4-A) ────────────────────────────────
-  // Adjust minTvl / minMcap / minHolders / minVolume based on deploy frequency + win rate
-  // Relaxes when funnel starves (< 3 deploys/week), tightens when win rate low (losers slipping through)
-  // Read closed positions from state.json (perfData is the lesson DB, not the raw record)
-  const s = config.screening;
-  const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
-  const recentClosed = perfData.filter((p) => {
-    const recorded = Date.parse(p.recorded_at);
-    return Number.isFinite(recorded) && Date.now() - recorded < SEVEN_DAYS;
-  });
-
-  const recentWinners = recentClosed.filter((p) => (p.pnl_pct ?? 0) > 0);
-  const recentWinRate = recentClosed.length > 0 ? recentWinners.length / recentClosed.length : null;
-
-  // Helper: clamp + apply ±10% rate limit per evolution step + 24h cooldown
-  const adjustGate = (key, currentRaw, factor, floor, ceiling, reason) => {
-    const current = Number(currentRaw);
-    if (!Number.isFinite(current) || current <= 0) return null;
-    
-    // Check cooldown — only evolve once per day
-    const lastEvolveKey = `lastEvolve_${key}`;
-    const now = Date.now();
-    const lastEvolve = config[lastEvolveKey] || 0;
-    if (now - lastEvolve < 24 * 60 * 60 * 1000) {
-      return null; // Cooldown active
-    }
-    
-    const target = Math.round(current * factor);
-    const newVal = Math.max(floor, Math.min(ceiling, target));
-    if (newVal === current) return null;
-    
-    changes[key] = newVal;
-    rationale[key] = `${reason} (${current} → ${newVal})`;
-    
-    // Record last evolve time
-    changes[lastEvolveKey] = now;
-    
-    return newVal;
-  };
-
-  // RELAX: funnel too tight (< 3 deploys in 7 days)
-  if (recentClosed.length > 0 && recentClosed.length < 3) {
-    const currentMinTvl = s.minTvl ?? 10000;
-    const currentMinMcap = s.minMcap ?? 150000;
-    const currentMinHolders = s.minHolders ?? 500;
-    const currentMinVolume = s.minVolume ?? 500;
-    const relaxFactor = 0.9; // 10% relaxation
-    const reason = `Funnel starve: ${recentClosed.length} deploys/7d — relaxing gates`;
-    adjustGate("minTvl", currentMinTvl, relaxFactor, 1000, 50000, reason);
-    adjustGate("minMcap", currentMinMcap, relaxFactor, 50000, 500000, reason);
-    adjustGate("minHolders", currentMinHolders, relaxFactor, 200, 2000, reason);
-    adjustGate("minVolume", currentMinVolume, relaxFactor, 200, 5000, reason);
-  }
-  // TIGHTEN: funnel too loose (win rate < 30% AND ≥ 5 deploys)
-  else if (recentWinRate != null && recentWinRate < 0.30 && recentClosed.length >= 5) {
-    const currentMinTvl = s.minTvl ?? 10000;
-    const currentMinMcap = s.minMcap ?? 150000;
-    const currentMinVolume = s.minVolume ?? 500;
-    const tightenFactor = 1.1; // 10% tightening
-    const reason = `Win rate ${(recentWinRate*100).toFixed(0)}% over ${recentClosed.length} deploys/7d — tightening gates`;
-    adjustGate("minTvl", currentMinTvl, tightenFactor, 1000, 50000, reason);
-    adjustGate("minMcap", currentMinMcap, tightenFactor, 50000, 500000, reason);
-    adjustGate("minHolders", s.minHolders ?? 500, tightenFactor, 200, 2000, reason);
-    adjustGate("minVolume", currentMinVolume, tightenFactor, 200, 5000, reason);
   }
 
   if (Object.keys(changes).length === 0) return { changes: {}, rationale: {} };
@@ -652,16 +497,10 @@ export function evolveThresholds(perfData, config) {
   fs.writeFileSync(USER_CONFIG_PATH, JSON.stringify(userConfig, null, 2));
 
   // Apply to live config object immediately
-  if (changes.minFeeActiveTvlRatio != null) s.minFeeActiveTvlRatio = changes.minFeeActiveTvlRatio;
+  const s = config.screening;
+  if (changes.maxVolatility    != null) s.maxVolatility    = changes.maxVolatility;
+  if (changes.minFeeActiveTvlRatio   != null) s.minFeeActiveTvlRatio   = changes.minFeeActiveTvlRatio;
   if (changes.minOrganic       != null) s.minOrganic       = changes.minOrganic;
-  if (changes.minTvl           != null) s.minTvl           = changes.minTvl;
-  if (changes.maxTvl           != null) s.maxTvl           = changes.maxTvl;
-  if (changes.minMcap          != null) s.minMcap          = changes.minMcap;
-  if (changes.maxMcap          != null) s.maxMcap          = changes.maxMcap;
-  if (changes.minHolders       != null) s.minHolders       = changes.minHolders;
-  if (changes.minVolume        != null) s.minVolume        = changes.minVolume;
-  const m = config.management;
-  if (changes.outOfRangeWaitMinutes != null && m) m.outOfRangeWaitMinutes = changes.outOfRangeWaitMinutes;
 
   // Log a lesson summarizing the evolution
   const data = load();
@@ -978,7 +817,7 @@ export function getPerformanceHistory({ hours = 24, limit = 50 } = {}) {
  */
 export function getPerformanceSummary() {
   const data = load();
-  const p = data.performance || [];
+  const p = data.performance;
 
   if (p.length === 0) return null;
 

@@ -73,10 +73,6 @@ export function trackPosition({
   entry_tvl = null,
   entry_volume = null,
   entry_holders = null,
-  // P5 telemetry: price/volume change at deploy (30m timeframe Meteora)
-  price_change_pct_at_deploy = null,
-  volume_change_pct_at_deploy = null,
-  tvl_change_pct_at_deploy = null,
 }) {
   const state = load();
   state.positions[position] = {
@@ -98,10 +94,6 @@ export function trackPosition({
     entry_tvl,
     entry_volume,
     entry_holders,
-    // P5 telemetry: price/volume change at deploy time
-    price_change_pct_at_deploy,
-    volume_change_pct_at_deploy,
-    tvl_change_pct_at_deploy,
     signal_snapshot: signal_snapshot || null,
     deployed_at: new Date().toISOString(),
     out_of_range_since: null,
@@ -112,10 +104,6 @@ export function trackPosition({
     closed_at: null,
     notes: [],
     peak_pnl_pct: 0,
-    current_pnl_usd: null,
-    current_pnl_pct: null,
-    current_value_usd: null,
-    last_pnl_update: null,
     pending_peak_pnl_pct: null,
     pending_peak_started_at: null,
     pending_trailing_current_pnl_pct: null,
@@ -395,10 +383,6 @@ export function getStateSummary() {
       initial_fee_tvl_24h: p.initial_fee_tvl_24h,
       rebalance_count: p.rebalance_count,
       instruction: p.instruction || null,
-      current_pnl_usd: p.current_pnl_usd ?? null,
-      current_pnl_pct: p.current_pnl_pct ?? null,
-      current_value_usd: p.current_value_usd ?? null,
-      last_pnl_update: p.last_pnl_update ?? null,
     })),
     last_updated: state.lastUpdated,
     recent_events: (state.recentEvents || []).slice(-10),
@@ -414,7 +398,7 @@ export function getStateSummary() {
  * Returns { action, reason } or null if no exit needed.
  */
 export function updatePnlAndCheckExits(position_address, positionData, mgmtConfig) {
-  const { pnl_pct: currentPnlPct, pnl_usd: currentPnlUsd, total_value_usd: currentValueUsd, pnl_pct_suspicious, in_range, fee_per_tvl_24h } = positionData;
+  const { pnl_pct: currentPnlPct, pnl_pct_suspicious, in_range, fee_per_tvl_24h } = positionData;
   const state = load();
   const pos = state.positions[position_address];
   if (!pos || pos.closed) return null;
@@ -451,15 +435,6 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
     log("state", `Position ${position_address} back in range`);
   }
 
-  // Persist current PnL snapshot (skip suspicious readings)
-  if (!pnl_pct_suspicious && currentPnlPct != null) {
-    pos.current_pnl_usd = currentPnlUsd ?? null;
-    pos.current_pnl_pct = currentPnlPct;
-    pos.current_value_usd = currentValueUsd ?? null;
-    pos.last_pnl_update = new Date().toISOString();
-    changed = true;
-  }
-
   if (changed) save(state);
 
   // ── Stop loss ──────────────────────────────────────────────────
@@ -489,13 +464,6 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
   if (pos.out_of_range_since) {
     const minutesOOR = Math.floor((Date.now() - new Date(pos.out_of_range_since).getTime()) / 60000);
     if (minutesOOR >= mgmtConfig.outOfRangeWaitMinutes) {
-      // If trailing TP is active and current PnL is still positive, let trailing TP handle exit
-      // This prevents closing profitable positions just because they're OOR
-      if (pos.trailing_active && currentPnlPct != null && currentPnlPct > 0) {
-        log("state", `Position ${position_address} OOR ${minutesOOR}m but trailing TP active with +${currentPnlPct.toFixed(2)}% PnL — letting trailing TP handle exit`);
-        return null; // Don't close, let trailing TP lock profit
-      }
-      
       return {
         action: "OUT_OF_RANGE",
         reason: `Out of range for ${minutesOOR}m (limit: ${mgmtConfig.outOfRangeWaitMinutes}m)`,

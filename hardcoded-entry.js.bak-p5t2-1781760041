@@ -1,0 +1,584 @@
+/**
+ * Hardcoded entry screening engine.
+ * Deterministic quality gates for pool entry before LLM sees candidates.
+ * Filters wash trading, bundle dev, low organic, weak fee generation.
+ */
+
+import { log } from "./logger.js";
+import { recordHardcodedReject, isOnRejectCooldown, getRejectCooldownInfo } from "./hardcoded-entry-rejects.js";
+import { isOnLoserCooldown, getLoserCooldownInfo } from "./loser-cooldowns.js";
+import { normalizeFeeTvlPct, formatPct } from "./metric-normalizers.js";
+
+function getBaseMint(pool) {
+  return pool.base_mint ?? pool.base?.mint ?? pool.token_mint ?? pool.mint ?? null;
+}
+
+// ── BLACKLIST (4-wallet data: tokens where ALL deployed wallets lost) ──
+// Symbols that hurt every wallet (FuiN, J5Mx, YQmA, kySP + ours).
+// Case-insensitive substring match on name + symbol.
+const BLACKLISTED_SYMBOLS = [
+  "spcx", "mmg", "dickbutt", "nean", "worldcup", "cumrocket", "ape",
+  "fine", "islands", "fish", "fable",
+];
+const WATCHLIST_SYMBOLS = [
+  "trelon", "brim", "guardian", "drooling", "清正", "zazu", "nong yan",
+  "bountywork", "1b", "turtle",
+];
+
+function isBlacklisted(pool) {
+  const name = String(pool.name ?? pool.base?.name ?? "").toLowerCase();
+  const symbol = String(pool.base?.symbol ?? pool.symbol ?? "").toLowerCase();
+  return BLACKLISTED_SYMBOLS.some(
+    (s) => name.includes(s) || symbol.includes(s) || symbol === s,
+  );
+}
+
+function isWatchlisted(pool) {
+  const name = String(pool.name ?? pool.base?.name ?? "").toLowerCase();
+  const symbol = String(pool.base?.symbol ?? pool.symbol ?? "").toLowerCase();
+  return WATCHLIST_SYMBOLS.some(
+    (s) => name.includes(s) || symbol.includes(s) || symbol === s,
+  );
+}
+
+function normalizeSmartWalletCount(value) {
+  if (value == null) return 0;
+  if (typeof value === "string") {
+    const text = value.trim().toLowerCase();
+    if (!text || text === "none" || text === "null" || text === "undefined" || text === "n/a") return 0;
+  }
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+export function poolQualityScore(pool) {
+  const feeTvl = normalizeFeeTvlPct(pool) ?? 0;
+  const activeTvl = Number(pool.active_tvl ?? pool.tvl ?? 0);
+  const volume = Number(pool.volume_window ?? pool.volume ?? pool.volume_24h ?? 0);
+  const organic = Number(pool.organic_score ?? pool.gmgn_organic_score ?? 0);
+  const botPct = Number(pool.bot_holders_pct ?? pool.gmgn_bot_degen_pct ?? 0);
+  const freshPct = Number(pool.new_wallet_pct ?? pool.gmgn_fresh_wallet_pct ?? pool.gmgn_fresh_wallets_pct ?? 0);
+  const volatility = Number(pool.volatility ?? pool.volatility_30m ?? 0);
+
+  let score = 0;
+  score += Math.min(35, feeTvl * 350);              // 0.10% = 35 pts
+  score += Math.min(20, activeTvl / 500);           // 10k TVL = 20 pts
+  score += Math.min(15, volume / 1000);             // 15k volume = 15 pts
+  score += Math.min(15, organic / 6);               // 90 organic = 15 pts
+  score += Math.max(0, 10 - botPct / 8);            // bot holder penalty
+  score += Math.max(0, 5 - freshPct / 12);          // fresh wallet penalty
+
+  // GMGN specific features
+  if (pool.gmgn) {
+    const smartWallets = normalizeSmartWalletCount(pool.gmgn_smart_wallets);
+    const totalFeeSol = Number(pool.gmgn_total_fee_sol ?? 0);
+
+    // Smart wallets bonus: up to 10 pts (20 smart wallets = 10 pts)
+    score += Math.min(10, smartWallets / 2);
+
+    // Total fees generated bonus: up to 10 pts (50 SOL fees = 10 pts)
+    score += Math.min(10, totalFeeSol / 5);
+
+    // Baseline proxy if organic score is missing for GMGN
+    if (!pool.organic_score && !pool.gmgn_organic_score) {
+      score += 10;
+    }
+  }
+
+  // ── WATCHLIST BOOST ──
+  // Data: tokens with overlapping smart wallet profitability get +5 pts
+  if (isWatchlisted(pool)) {
+    score += 5;
+  }
+
+  if (Number.isFinite(volatility) && volatility > 5) score -= Math.min(10, (volatility - 5) * 2);
+
+  return Math.min(100, Math.max(0, Math.round(score * 10) / 10));
+}
+
+/**
+ * Compute conviction tier + component breakdown for a pool.
+ * Surfaces deterministic quality signal to SCREENER agent and dlmm deploy.
+ * Tier labels: strong(≥75) | good(55-74.9) | medium(35-54.9) | weak(<35)
+ *
+ * @param {object} pool - Pool candidate (qualityScore should already be set by checkHardcodedEntry)
+ * @returns {{ tier: string, score: number, breakdown: object }}
+ */
+export function computeConvictionTier(pool) {
+  const score = pool.qualityScore ?? poolQualityScore(pool);
+  const feeTvl = normalizeFeeTvlPct(pool) ?? 0;
+  const activeTvl = Number(pool.active_tvl ?? pool.tvl ?? 0);
+  const volume = Number(pool.volume_window ?? pool.volume ?? pool.volume_24h ?? 0);
+  const organic = Number(pool.organic_score ?? pool.gmgn_organic_score ?? 0);
+  const botPct = Number(pool.bot_holders_pct ?? pool.gmgn_bot_degen_pct ?? 0);
+  const freshPct = Number(pool.new_wallet_pct ?? pool.gmgn_fresh_wallet_pct ?? pool.gmgn_fresh_wallets_pct ?? 0);
+  const volatility = Number(pool.volatility ?? pool.volatility_30m ?? 0);
+  const smartWallets = normalizeSmartWalletCount(pool.gmgn_smart_wallets);
+  const totalFeeSol = Number(pool.gmgn_total_fee_sol ?? 0);
+
+  // Per-component raw contributions (for transparency)
+  const breakdown = {
+    feeTvlPts:   Math.min(35, feeTvl * 350),
+    tvlPts:     Math.min(20, activeTvl / 500),
+    volPts:     Math.min(15, volume / 1000),
+    orgPts:     Math.min(15, organic / 6),
+    botPts:     Math.max(0, 10 - botPct / 8),
+    freshPts:   Math.max(0, 5 - freshPct / 12),
+    swPts:      pool.gmgn ? Math.min(10, smartWallets / 2) : 0,
+    feeSolPts:  pool.gmgn ? Math.min(10, totalFeeSol / 5) : 0,
+    volPen:     Number.isFinite(volatility) && volatility > 5 ? Math.min(10, (volatility - 5) * 2) : 0,
+    total:      score,
+  };
+
+  let tier;
+  if (score >= 75)      tier = "strong";
+  else if (score >= 55) tier = "good";
+  else if (score >= 35) tier = "medium";
+  else                  tier = "weak";
+
+  return { tier, score: Math.round(score * 10) / 10, breakdown };
+}
+
+function assignTier(pool, feeActiveTvlRatio, qualityScore) {
+  const fee = Number(feeActiveTvlRatio);
+  if (!Number.isFinite(fee) || fee <= 0) return "unknown";
+  if (fee < 0.02) return "reject";
+  if (fee < 0.10) return qualityScore >= 70 ? "scout_exception" : "scout_only";
+  return "normal_deploy";
+}
+
+/**
+ * Hard entry filter: deterministic quality gates.
+ * Returns { pass: boolean, reason: string | null }
+ * 
+ * @param {object} pool - Pool candidate from screening
+ * @param {object} config - Screening config
+ * @returns {{ pass: boolean, reason: string | null }}
+ */
+export function checkHardcodedEntry(pool, config) {
+  const s = config.screening || config;
+  const baseMint = getBaseMint(pool);
+  const explorationMode = Boolean(config.dryRunExploration ?? s.dryRunExploration);
+
+  // ── RULE -1: Smart Blacklist ──
+  if (isBlacklisted(pool)) {
+    return {
+      pass: false,
+      reason: `Blacklisted token (${pool.name || pool.symbol || "unknown"})`,
+    };
+  }
+
+  if (isOnRejectCooldown(baseMint)) {
+    const info = getRejectCooldownInfo(baseMint);
+    if (explorationMode) {
+      log("hardcoded_entry", `EXPLORATION OVERRIDE reject cooldown for ${pool.name || baseMint}: until ${info.cooldownUntil}`);
+    } else {
+      return {
+        pass: false,
+        reason: `hardcoded reject cooldown active until ${info.cooldownUntil} (${info.rejectCount} recent rejects for token)`,
+      };
+    }
+  }
+
+  if (isOnLoserCooldown(baseMint)) {
+    const info = getLoserCooldownInfo(baseMint);
+    return {
+      pass: false,
+      reason: info.permanent
+        ? `permanent loser reject after ${info.triggeredByPnlPct}% close (${info.permanentRejectReason || info.reason || "bad pool history"})`
+        : `loser cooldown active until ${info.cooldownUntil} after ${info.triggeredByPnlPct}% close`,
+    };
+  }
+
+  // ── RULE 0A: Adverse Pool Memory Trend ──
+  // DISABLED: getAdverseTrendRejectInfo removed from upstream pool-memory.js
+  // Re-enable when function is restored.
+  const adverseTrend = null;
+  if (adverseTrend && s.memoryTrendRejectEnabled !== false) {
+    return {
+      pass: false,
+      reason: adverseTrend.reason,
+    };
+  }
+
+  // ── RULE 0: Absolute Fee/TVL Floor (Zero Tolerance) ──
+  // Keep tiny floor to avoid capital parking, but do not silently fall back to profit-killing 2%.
+  const feeActiveTvlRatio = normalizeFeeTvlPct(pool);
+  if (!Number.isFinite(feeActiveTvlRatio)) {
+    const result = {
+      pass: false,
+      reason: "fee/TVL unknown (null/NaN) — hard reject until data valid",
+    };
+    recordHardcodedReject(baseMint, result.reason, s);
+    return result;
+  }
+  const absoluteMinFeeActiveTvlRatio = Number(s.absoluteMinFeeActiveTvlRatio ?? 0.005);
+  if (
+    Number.isFinite(absoluteMinFeeActiveTvlRatio) &&
+    absoluteMinFeeActiveTvlRatio > 0 &&
+    Number.isFinite(feeActiveTvlRatio) && feeActiveTvlRatio < absoluteMinFeeActiveTvlRatio
+  ) {
+    const result = {
+      pass: false,
+      reason: `fee/TVL ${Number.isFinite(feeActiveTvlRatio) ? feeActiveTvlRatio : "unknown"} < absolute floor ${absoluteMinFeeActiveTvlRatio}% (low fee pool parks capital)`,
+    };
+    recordHardcodedReject(baseMint, result.reason, s);
+    return result;
+  }
+
+  // ── RULE 0b: Max Fee/TVL Cap (Trap Filter + Timeframe Scaling) ──
+  // 649 trade audit: BigLoss average fee/TVL = 67.0% (vs Win avg 22.8%).
+  // Anything above 50% (24h baseline) is almost always a low-TVL pool where fee/TVL ratio is artificially inflated.
+  // Timeframe scaling: 5m pools naturally have higher fee/TVL (compressed volume window). Scale cap up for short timeframes.
+  // Formula: cap = baseCap * (1440 / timeframeMinutes). 5m → 10x cap, 24h → 1x cap.
+  const timeframeMinutes = (() => {
+    const tf = String(s.timeframe ?? "5m").toLowerCase();
+    const match = tf.match(/^(\d+)(m|h|d)$/);
+    if (!match) return 5;
+    const [, num, unit] = match;
+    return parseInt(num) * (unit === "h" ? 60 : unit === "d" ? 1440 : 1);
+  })();
+  const baseMaxFee = Number(s.maxFeeActiveTvlRatio ?? 0.50);
+  const scaledMaxFee = baseMaxFee * (1440 / timeframeMinutes);
+  const maxFeeActiveTvlRatio = isWatchlisted(pool) ? scaledMaxFee + 1.0 : scaledMaxFee;
+  if (Number.isFinite(feeActiveTvlRatio) && feeActiveTvlRatio > maxFeeActiveTvlRatio) {
+    const result = {
+      pass: false,
+      reason: `fee/TVL ${feeActiveTvlRatio.toFixed(2)}% > max ${maxFeeActiveTvlRatio.toFixed(2)}% (trap: artificial high fee/TVL on low TVL or wash trading, scaled for ${s.timeframe ?? "5m"} timeframe${isWatchlisted(pool) ? ", even with watchlist boost" : ""})`,
+    };
+    recordHardcodedReject(baseMint, result.reason, s);
+    return result;
+  }
+
+  // ── RULE 0B-TAG: Tag-based Reject (data-driven) ──
+  // DISABLED: getPoolTagRejectInfo removed from upstream pool-memory.js
+  // Pool tag reject logic handled by screening.js pool-memory guards instead.
+  const tagReject = null;
+  if (tagReject && s.poolTagRejectEnabled !== false) {
+    return {
+      pass: false,
+      reason: tagReject.reason,
+    };
+  }
+
+  // ── RULE 0B: Tiered Fee/TVL Deploy Gate ──
+  // tier: normal_deploy (≥0.10) | scout_exception (0.02-0.10, score≥70) | scout_only (0.02-0.10, score<70)
+  // Data: 0.02-0.05 bucket outperformed 0.05+ historically; keep quality gate, not 0.05 hard floor.
+  const minViableFeeTvlRatio = 0.10;
+  let pendingScoutTier = null;
+  let pendingScoutQualityScore = null;
+  if (Number.isFinite(feeActiveTvlRatio) && feeActiveTvlRatio > 0 && feeActiveTvlRatio < minViableFeeTvlRatio) {
+    // Scout tier logic tags candidate only. It must still pass every later guard.
+    const qualityScore = poolQualityScore(pool);
+    const tier = assignTier(pool, feeActiveTvlRatio, qualityScore);
+    pool.qualityScore = qualityScore;
+    pool._tier = tier;
+
+    if (feeActiveTvlRatio < 0.02) {
+      const result = {
+        pass: false,
+        reason: `fee/TVL ${feeActiveTvlRatio.toFixed(4)}% < 0.02% (absolute floor)`,
+      };
+      recordHardcodedReject(baseMint, result.reason, s);
+      return result;
+    }
+
+    if (tier === "scout_only") {
+      const result = {
+        pass: false,
+        reason: `fee/TVL ${feeActiveTvlRatio.toFixed(4)}% in scout range but pool qualityScore ${qualityScore} < 70 (scout_only rejected)`,
+      };
+      recordHardcodedReject(baseMint, result.reason, s);
+      return result;
+    }
+
+    pendingScoutTier = tier;
+    pendingScoutQualityScore = qualityScore;
+  }
+
+  // ── RULE 1: Organic Score (GMGN) ──
+  // Reject pools with zero or very low organic activity
+  const organicScore = pool.organic_score ?? pool.gmgn_organic_score;
+  const minOrganic = s.minOrganic ?? 40;
+  if (organicScore != null && organicScore < minOrganic) {
+    const result = {
+      pass: false,
+      reason: `organic score ${organicScore} < ${minOrganic} (bot-driven pool)`,
+    };
+    recordHardcodedReject(baseMint, result.reason, s);
+    return result;
+  }
+
+  // ── RULE 2: Bot Holders Percentage ──
+  const botPct = pool.bot_holders_pct ?? pool.gmgn_bot_degen_pct ?? pool.audit?.bot_holders_pct;
+  const maxBot = s.maxBotHoldersPct ?? 40;
+  if (botPct != null && botPct > maxBot) {
+    const result = {
+      pass: false,
+      reason: `bot holders ${botPct.toFixed(1)}% > ${maxBot}% (unsustainable volume)`,
+    };
+    recordHardcodedReject(baseMint, result.reason, s);
+    return result;
+  }
+
+  // ── RULE 3: Bundle Percentage (Dev Coordination) ──
+  const bundlePct = pool.bundle_pct ?? pool.gmgn_bundle_pct;
+  const maxBundle = s.maxBundlePct ?? 30;
+  if (bundlePct != null && bundlePct > maxBundle) {
+    const result = {
+      pass: false,
+      reason: `bundle ${bundlePct.toFixed(1)}% > ${maxBundle}% (dev coordination risk)`,
+    };
+    recordHardcodedReject(baseMint, result.reason, s);
+    return result;
+  }
+
+  // ── RULE 4: Fresh Wallets + Bundle Combo (Sybil Attack) ──
+  const freshWalletsPct = pool.new_wallet_pct ?? pool.gmgn_fresh_wallet_pct ?? pool.gmgn_fresh_wallets_pct;
+  if (freshWalletsPct != null && freshWalletsPct > 70 && bundlePct != null && bundlePct > 5) {
+    const result = {
+      pass: false,
+      reason: `fresh wallets ${freshWalletsPct.toFixed(1)}% + bundle ${bundlePct.toFixed(1)}% (sybil attack pattern)`,
+    };
+    recordHardcodedReject(baseMint, result.reason, s);
+    return result;
+  }
+
+  // ── RULE 5: Wash Trading (Fee/Volume Ratio) ──
+  // Legitimate DEX trading generates ~0.1-1% fee from volume
+  // Wash trading bots inflate volume without proportional fees
+  // GMGN primary — Jupiter datapi inaccurate; gmgn_total_fee_sol preferred, jup fallback
+  const globalFeesSol = pool.gmgn_total_fee_sol ?? pool.global_fees_sol;
+  const volume = pool.volume_window ?? pool.volume_24h ?? pool.gmgn_volume_24h;
+  const solPrice = 150; // rough estimate for ratio check
+  if (globalFeesSol != null && volume != null && volume > 0) {
+    const globalFeesUsd = globalFeesSol * solPrice;
+    const feeVolumeRatio = globalFeesUsd / volume;
+    const minFeeVolumeRatio = s.minFeeVolumeRatio ?? 0.001; // 0.1%
+    if (feeVolumeRatio < minFeeVolumeRatio) {
+      const result = {
+        pass: false,
+        reason: `fee/volume ratio ${(feeVolumeRatio * 100).toFixed(3)}% < ${(minFeeVolumeRatio * 100).toFixed(1)}% (wash trading suspected)`,
+      };
+      recordHardcodedReject(baseMint, result.reason, s);
+      return result;
+    }
+  }
+
+  // ── RULE 6: Token Fees Minimum (Proven Pool) ──
+  const tokenFeesSol = globalFeesSol ?? pool.token_fees_sol;
+  const minTokenFees = s.minTokenFeesSol ?? 30;
+  if (tokenFeesSol != null && tokenFeesSol < minTokenFees) {
+    const result = {
+      pass: false,
+      reason: `token fees ${tokenFeesSol.toFixed(1)} SOL < ${minTokenFees} SOL (unproven pool)`,
+    };
+    recordHardcodedReject(baseMint, result.reason, s);
+    return result;
+  }
+
+  // ── RULE 7: Top Holders Concentration ──
+  const top10Pct = pool.top10_holder_pct ?? pool.gmgn_top10_holder_pct ?? pool.audit?.top_holders_pct;
+  const maxTop10 = s.maxTop10Pct ?? 60;
+  if (top10Pct != null && top10Pct > maxTop10) {
+    const result = {
+      pass: false,
+      reason: `top10 holders ${top10Pct.toFixed(1)}% > ${maxTop10}% (concentration risk)`,
+    };
+    recordHardcodedReject(baseMint, result.reason, s);
+    return result;
+  }
+
+  // ── RULE 8: Market Cap Range ──
+  const mcap = pool.mcap ?? pool.market_cap ?? pool.gmgn_mcap;
+  const tvl = pool.tvl ?? pool.active_tvl;
+  const minMcap = s.minMcap ?? 150000;
+  const maxMcap = s.maxMcap ?? 10000000;
+  if (mcap != null) {
+    if (mcap < minMcap) {
+      const result = {
+        pass: false,
+        reason: `mcap $${mcap.toFixed(0)} < $${minMcap} (too small)`,
+      };
+      recordHardcodedReject(baseMint, result.reason, s);
+      return result;
+    }
+    if (mcap > maxMcap) {
+      const result = {
+        pass: false,
+        reason: `mcap $${mcap.toFixed(0)} > $${maxMcap} (too large)`,
+      };
+      recordHardcodedReject(baseMint, result.reason, s);
+      return result;
+    }
+  }
+
+  // ── RULE 8B: TVL/Market Cap Saturation ──
+  // Ideal DLMM fee-farm pools have enough liquidity to trade, but not so much that
+  // position capital is diluted. TVL/MC <= 0.1 is ideal; > 0.2 is saturated.
+  const tvlNum = Number(tvl);
+  const mcapNum = Number(mcap);
+  const maxTvlMcapRatio = Number(s.maxTvlMcapRatio ?? 0.2);
+  if (
+    Number.isFinite(tvlNum) && tvlNum > 0 &&
+    Number.isFinite(mcapNum) && mcapNum > 0 &&
+    Number.isFinite(maxTvlMcapRatio) && maxTvlMcapRatio > 0
+  ) {
+    const tvlMcapRatio = tvlNum / mcapNum;
+    if (tvlMcapRatio > maxTvlMcapRatio) {
+      const result = {
+        pass: false,
+        reason: `TVL/MC ${(tvlMcapRatio * 100).toFixed(1)}% > ${(maxTvlMcapRatio * 100).toFixed(0)}% (pool saturated; fee yield diluted)`,
+      };
+      recordHardcodedReject(baseMint, result.reason, s);
+      return result;
+    }
+  }
+
+  // ── RULE 9: Volume Minimum ──
+  const minVolume = s.minVolume ?? 3000;
+  if (volume != null && volume < minVolume) {
+    const result = {
+      pass: false,
+      reason: `volume $${volume.toFixed(0)} < $${minVolume} (low liquidity)`,
+    };
+    recordHardcodedReject(baseMint, result.reason, s);
+    return result;
+  }
+
+  // ── RULE 10: Volatility Ceiling ──
+  // Productive fee farmer thesis wants chop, not uncontrolled momentum/dumps.
+  // Exception: watchlist tokens get 2x volatility tolerance.
+  const volatility = Number(pool.volatility ?? pool.volatility_30m ?? pool.volatility_1h);
+  const maxVolatility = isWatchlisted(pool) ? (s.maxVolatility ? s.maxVolatility * 2 : 4.0) : s.maxVolatility;
+  if (
+    maxVolatility != null &&
+    Number.isFinite(Number(maxVolatility)) &&
+    Number.isFinite(volatility) &&
+    volatility > Number(maxVolatility)
+  ) {
+    const result = {
+      pass: false,
+      reason: `volatility ${volatility.toFixed(2)} > max ${Number(maxVolatility)} (too hot for sideways fee farmer${isWatchlisted(pool) ? " even with watchlist boost" : ""})`,
+    };
+    recordHardcodedReject(baseMint, result.reason, s);
+    return result;
+  }
+
+  // ── RULE 10B: High Volatility Requires Panda Exit ──
+  // Data: vol > 5 has better PnL (+0.30%) than vol ≤ 5 (-0.46%) but SL slippage kills.
+  // Panda exit (RSI 90+BB) catches pump peak before dump. Without it, high-vol = SL bleed.
+  // If Panda is disabled, reject any pool with vol > 5.
+  const pandaEnabled = Boolean(config.management?.pandaExitEnabled ?? config.pandaExitEnabled);
+  const poolVol = Number(volatility || pool.volatility_30m || 0);
+  if (Number.isFinite(poolVol) && poolVol > 5 && !pandaEnabled) {
+    const result = {
+      pass: false,
+      reason: `volatility ${poolVol.toFixed(2)} > 5 and pandaExitEnabled=false (high vol needs Panda exit — SL is too slow)`,
+    };
+    recordHardcodedReject(baseMint, result.reason, s);
+    return result;
+  }
+
+  // ── RULE 11: Recent Price Pump Ceiling ──
+  // Reject tokens that already pumped hard recently — they dump into your range.
+  const priceChangePct = Number(pool.price_change_pct ?? pool.price_change_percent5m ?? pool.gmgn_price_change_pct);
+  const maxPriceChangePct = s.maxPriceChangePct;
+  if (
+    maxPriceChangePct != null &&
+    Number.isFinite(priceChangePct) &&
+    priceChangePct > Number(maxPriceChangePct)
+  ) {
+    const result = {
+      pass: false,
+      reason: `price change ${priceChangePct.toFixed(1)}% > max ${maxPriceChangePct}% (already pumped, dump risk)`,
+    };
+    recordHardcodedReject(baseMint, result.reason, s);
+    return result;
+  }
+
+  // ── RULE 12: Too Close to ATH ──
+  // If price is near ATH, likely to retrace. Sideways thesis wants pullback names.
+  const priceVsAth = Number(pool.price_vs_ath_pct);
+  const minPriceVsAthPct = s.minPriceVsAthPct;
+  if (
+    minPriceVsAthPct != null &&
+    Number.isFinite(priceVsAth) &&
+    priceVsAth > Number(minPriceVsAthPct)
+  ) {
+    const result = {
+      pass: false,
+      reason: `price vs ATH ${priceVsAth.toFixed(1)}% > ${minPriceVsAthPct}% (too close to ATH, retrace risk)`,
+    };
+    recordHardcodedReject(baseMint, result.reason, s);
+    return result;
+  }
+
+  const smartWallets = Math.max(
+    normalizeSmartWalletCount(pool.gmgn_smart_wallets),
+    normalizeSmartWalletCount(pool.smart_wallets),
+  );
+
+  // ── RULE 13: Momentum Without Smart Wallets ──
+  // High volatility + no smart wallets + pump.fun = retail FOMO, not sustainable.
+  if (s.requireSmartWalletsForMomentum !== false) {
+    const isMomentum = (
+      (Number.isFinite(volatility) && volatility > 2.5) ||
+      (Number.isFinite(priceChangePct) && priceChangePct > 15)
+    );
+    const isPumpFun = String(pool.launchpad || "").toLowerCase().includes("pump");
+    if (isMomentum && smartWallets === 0 && isPumpFun) {
+      const result = {
+        pass: false,
+        reason: `momentum (vol=${Number.isFinite(volatility) ? volatility.toFixed(1) : "?"}, chg=${Number.isFinite(priceChangePct) ? priceChangePct.toFixed(0) + "%" : "?"}) + pump.fun + 0 smart wallets (unsustainable retail FOMO)`,
+      };
+      recordHardcodedReject(baseMint, result.reason, s);
+      return result;
+    }
+  }
+
+  // ── RULE 14: Scout Exception Requires Smart Wallet Confirmation ──
+  // Scout fee/TVL buckets may be profitable, but do not let LLM deploy them on narrative alone.
+  if (pendingScoutTier === "scout_exception" && s.requireSmartWalletsForScoutException !== false && smartWallets <= 0) {
+    const result = {
+      pass: false,
+      reason: `scout_exception requires smart wallet confirmation (0 smart wallets)`,
+    };
+    recordHardcodedReject(baseMint, result.reason, s);
+    return result;
+  }
+
+  // All checks passed
+  const qualityScore = pendingScoutQualityScore ?? poolQualityScore(pool);
+  const tier = pendingScoutTier ?? "normal_deploy";
+  pool.qualityScore = qualityScore;
+  pool._tier = tier;
+  if (tier === "scout_exception") {
+    log("scout_tier", `${pool.name || pool.pool_address?.slice(0, 8)}: fee/TVL ${feeActiveTvlRatio.toFixed(4)}%, qualityScore ${qualityScore}, tier ${tier} (passed all hard guards)`);
+  }
+  const boost = null; // getPoolTagBoostInfo removed from upstream pool-memory.js
+  return { pass: true, reason: null, _tier: tier, _qualityScore: qualityScore, _boost: boost || null };
+}
+
+/**
+ * Batch filter pools with hardcoded entry rules.
+ * Returns { passing: [], rejected: [{ pool, reason }] }
+ */
+export { assignTier };
+
+export function filterPoolsHardcoded(pools, config) {
+  const passing = [];
+  const rejected = [];
+
+  for (const pool of pools) {
+    const result = checkHardcodedEntry(pool, config);
+    if (result.pass) {
+      passing.push(pool);
+    } else {
+      rejected.push({ pool, reason: result.reason });
+      log("hardcoded_entry", `Rejected ${pool.name || pool.pool?.slice(0, 8)}: ${result.reason}`);
+    }
+  }
+
+  return { passing, rejected };
+}

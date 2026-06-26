@@ -1,0 +1,16 @@
+{
+  "tokens": {
+    "9spN3Lrz4tnFXaXfR9QzKdiMd2hE4AUbAJntui21pump": {
+      "symbol": "XP-SOL",
+      "triggeredByPnlPct": -0.11627256448802875,
+      "reason": "Pumped far above range, OOR 7min, pnl -0.36%, no fees",
+      "badCount": 1,
+      "losses": 1,
+      "oor": 1,
+      "lowYield": 0,
+      "updatedAt": "2026-06-15T05:46:22.511Z",
+      "permanent": false,
+      "cooldownUntil": "2026-06-15T06:16:22.511Z"
+    }
+  }
+}

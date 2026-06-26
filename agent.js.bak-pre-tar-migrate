@@ -4,8 +4,8 @@ import { buildSystemPrompt } from "./prompt.js";
 import { executeTool } from "./tools/executor.js";
 import { tools } from "./tools/definitions.js";
 
-const MANAGER_TOOLS  = new Set(["close_position", "claim_fees", "swap_token", "get_position_pnl", "get_my_positions", "get_wallet_balance", "get_wallet_positions"]);
-const SCREENER_TOOLS = new Set(["deploy_position", "get_active_bin", "get_top_candidates", "check_smart_wallets_on_pool", "get_token_holders", "get_token_narrative", "get_token_info", "search_pools", "get_pool_memory", "get_wallet_balance", "get_my_positions", "get_wallet_positions"]);
+const MANAGER_TOOLS  = new Set(["close_position", "claim_fees", "swap_token", "get_position_pnl", "get_my_positions", "get_wallet_balance"]);
+const SCREENER_TOOLS = new Set(["deploy_position", "get_active_bin", "get_top_candidates", "check_smart_wallets_on_pool", "get_token_holders", "get_token_narrative", "get_token_info", "search_pools", "get_pool_memory", "get_wallet_balance", "get_my_positions"]);
 const GENERAL_INTENT_ONLY_TOOLS = new Set([
   "self_update",
   "update_config",
@@ -93,49 +93,13 @@ import { getDecisionSummary } from "./decision-log.js";
 
 // Supports OpenRouter (default) or any OpenAI-compatible local server (e.g. LM Studio)
 // To use LM Studio: set LLM_BASE_URL=http://localhost:1234/v1 and LLM_API_KEY=lm-studio in .env
-// For custom providers like gateway.dahono.com, uses fetch with proper Authorization header
-let client;
-// let isCustomProvider = false;
+const client = new OpenAI({
+  baseURL: process.env.LLM_BASE_URL || "https://openrouter.ai/api/v1",
+  apiKey: process.env.LLM_API_KEY || process.env.OPENROUTER_API_KEY,
+  timeout: 5 * 60 * 1000,
+});
 
-const llmBaseUrl = process.env.LLM_BASE_URL || "https://openrouter.ai/api/v1";
-const llmApiKey = process.env.LLM_API_KEY || process.env.OPENROUTER_API_KEY;
-
-// // Detect if it's a custom provider (not OpenAI/OpenRouter compatible)
-// if (llmBaseUrl.includes('gateway.dahono.com')) {
-//   isCustomProvider = true;
-// } else {
-  client = new OpenAI({
-    baseURL: llmBaseUrl,
-    apiKey: llmApiKey || 'sk-or-v1-...',
-    timeout: 5 * 60 * 1000,
-  });
-// }
-
-// async function callCustomLLM(model, messages, tools, temperature, max_tokens) {
-//   const response = await fetch(`${llmBaseUrl}/chat/completions`, {
-//     method: 'POST',
-//     headers: {
-//       'Content-Type': 'application/json',
-//       'Authorization': `Bearer ${llmApiKey}`
-//     },
-//     body: JSON.stringify({
-//       model: model,
-//       messages: messages,
-//       temperature: temperature,
-//       max_tokens: max_tokens
-//       // Note: Custom providers may not support tools, so we omit them
-//     })
-//   });
-//   
-//   if (!response.ok) {
-//     throw new Error(`HTTP error! status: ${response.status}`);
-//   }
-//   
-//   const data = await response.json();
-//   return data;
-// }
-
-const DEFAULT_MODEL = "dahono/deepseek-v4-flash";
+const DEFAULT_MODEL = "combo";
 
 const MUTATING_TOOL_INTENTS = /\b(deploy|open position|add liquidity|lp into|invest in|close|exit|withdraw|remove liquidity|claim|harvest|collect|swap|convert|sell|exchange|block|unblock|blacklist|add smart wallet|remove smart wallet|add wallet|remove wallet|pin|unpin|clear lesson|add lesson|set active strategy|remove strategy|add strategy|set |change |update |self.?update|pull latest|git pull|update yourself)\b/i;
 const LIVE_DATA_TOOL_INTENTS = /\b(balance|wallet|position|portfolio|pnl|yield|range|show positions|open positions|screen|candidate|find pool|search|research|analyze|check pool|token holders|narrative|study top|top lpers?|lp behavior|who.?s lping|performance|history|stats|report|list smart wallets|list blacklist|list blocked deployers|list lessons)\b/i;
@@ -180,7 +144,7 @@ function isToolChoiceRequiredError(error) {
 
 function isThinkingModeToolChoiceError(error) {
   const message = String(error?.message || error?.error?.message || error || "");
-  return /tool_choice parameter does not support/i.test(message);
+  return /thinking mode does not support/i.test(message) && /tool_choice/i.test(message);
 }
 
 /**
@@ -248,7 +212,6 @@ export async function agentLoop(goal, maxSteps = config.llm.maxSteps, sessionHis
             max_tokens: maxOutputTokens ?? config.llm.maxTokens,
           };
           if (!omitToolChoice) reqParams.tool_choice = toolChoice;
-          
           response = await client.chat.completions.create(reqParams);
         } catch (error) {
           if (providerMode === "system" && isSystemRoleError(error)) {
@@ -273,15 +236,6 @@ export async function agentLoop(goal, maxSteps = config.llm.maxSteps, sessionHis
           throw error;
         }
         if (response.choices?.length) break;
-        // Some thinking-mode providers return 400 with tool_choice=required instead of throwing.
-        // Detect the response-level error and retry without tool_choice.
-        const respErr = response?.error?.message || "";
-        if (!omitToolChoice && /tool_choice.*not support|thinking mode.*tool_choice/i.test(respErr)) {
-          omitToolChoice = true;
-          log("agent", "Response-level thinking mode tool_choice error — retrying without tool_choice");
-          attempt -= 1;
-          continue;
-        }
         const errCode = response.error?.code;
         if (errCode === 502 || errCode === 503 || errCode === 529) {
           const wait = (attempt + 1) * 5000;
@@ -410,6 +364,7 @@ export async function agentLoop(goal, maxSteps = config.llm.maxSteps, sessionHis
           content: JSON.stringify(result),
         };
       }));
+
       messages.push(...toolResults);
     } catch (error) {
       log("error", `Agent loop error at step ${step}: ${error.message}`);

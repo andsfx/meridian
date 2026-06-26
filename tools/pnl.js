@@ -213,7 +213,7 @@ function buildPosition(f, prices, solUsd, meteora, solMode) {
   return {
     position:           f.position,
     pool:               f.pool,
-    pair:               tracked?.pool_name || (meteora ? `${meteora.tokenX ?? "?"}/${meteora.tokenY ?? "SOL"}` : "?/SOL"),
+    pair:               tracked?.pool_name || (meteora ? `${meteora.tokenX?.symbol ?? meteora.tokenX?.mint?.slice(0,4) ?? "?"}/${meteora.tokenY?.symbol ?? "SOL"}` : "?/SOL"),
     base_mint:          f.baseMint,
     lower_bin:          f.lower ?? tracked?.bin_range?.min ?? null,
     upper_bin:          f.upper ?? tracked?.bin_range?.max ?? null,

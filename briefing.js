@@ -30,6 +30,11 @@ export async function generateBriefing() {
   const openPositions = allPositions.filter(p => !p.closed);
   const perfSummary = getPerformanceSummary();
 
+  // Calculate unrealized PnL from persisted snapshots
+  const positionsWithPnl = openPositions.filter(p => p.current_pnl_usd != null);
+  const totalUnrealizedPnl = positionsWithPnl.reduce((sum, p) => sum + (p.current_pnl_usd || 0), 0);
+  const totalCurrentValue = positionsWithPnl.reduce((sum, p) => sum + (p.current_value_usd || 0), 0);
+
   // 5. Format Message
   const lines = [
     "☀️ <b>Morning Briefing</b> (Last 24h)",
@@ -52,6 +57,12 @@ export async function generateBriefing() {
     "",
     `<b>Current Portfolio:</b>`,
     `📂 Open Positions: ${openPositions.length}`,
+    positionsWithPnl.length > 0
+      ? `💹 Unrealized PnL: ${totalUnrealizedPnl >= 0 ? "+" : ""}$${totalUnrealizedPnl.toFixed(2)} (${positionsWithPnl.length}/${openPositions.length} positions)`
+      : `💹 Unrealized PnL: pending first cycle`,
+    positionsWithPnl.length > 0
+      ? `💼 Portfolio Value: $${totalCurrentValue.toFixed(2)}`
+      : "",
     perfSummary
       ? `📊 All-time PnL: $${perfSummary.total_pnl_usd.toFixed(2)} (${perfSummary.win_rate_pct}% win)`
       : "",

@@ -1,0 +1,660 @@
+{
+  "POOL1781452413030": {
+    "name": "TESTPOOL",
+    "base_mint": "TESTDouble1781452413030",
+    "deploys": [
+      {
+        "deployed_at": "2026-06-14T12:00:00Z",
+        "closed_at": "2026-06-14T13:00:00Z",
+        "pnl_pct": -3,
+        "close_reason": "out of range"
+      }
+    ],
+    "total_deploys": 1
+  },
+  "FxtewwzHZFCYgkGJDCz8KymfFwW5nXV1B9UMeHTV2u2F": {
+    "name": "TURTLE-SOL",
+    "base_mint": "2dJniDEAGCG7zWKseCkyrML3W23WLjDf1CGxpNv3pump",
+    "deploys": [
+      {
+        "deployed_at": null,
+        "closed_at": "2026-06-14T16:13:19.871Z",
+        "pnl_pct": 0.14,
+        "pnl_usd": 0.04,
+        "fees_earned_usd": 0.000197639180004461,
+        "fees_earned_sol": null,
+        "fee_earned_pct": 0.0007913996534537014,
+        "range_efficiency": 14.3,
+        "minutes_held": 7,
+        "close_reason": "OOR - pumped far above range (active -462 above upper -473)",
+        "strategy": "bid_ask",
+        "volatility_at_deploy": null
+      },
+      {
+        "deployed_at": null,
+        "closed_at": "2026-06-14T19:16:49.921Z",
+        "pnl_pct": -0.01,
+        "pnl_usd": 0,
+        "fees_earned_usd": 0.000006420316081135,
+        "fees_earned_sol": null,
+        "fee_earned_pct": 0.000025674093227910382,
+        "range_efficiency": 0,
+        "minutes_held": 0,
+        "close_reason": "Emergency instant close: PnL -100% <= -10% (catastrophic move protection). Trailing TP triggered.",
+        "strategy": "bid_ask",
+        "volatility_at_deploy": null
+      }
+    ],
+    "total_deploys": 2,
+    "avg_pnl_pct": 0.07,
+    "win_rate": 0.5,
+    "adjusted_win_rate": 0,
+    "adjusted_win_rate_sample_count": 1,
+    "last_deployed_at": "2026-06-14T19:16:49.921Z",
+    "last_outcome": "loss",
+    "notes": [],
+    "snapshots": [
+      {
+        "ts": "2026-06-14T16:10:01.897Z",
+        "position": "5G1NqobWwPJxcEnBVDb6id7qCaAykFZNhUzZEKkjj3UC",
+        "pnl_pct": -0.01,
+        "pnl_usd": -0.0036,
+        "in_range": false,
+        "unclaimed_fees_usd": 0.0002,
+        "minutes_out_of_range": 3,
+        "age_minutes": 3
+      },
+      {
+        "ts": "2026-06-14T16:13:00.861Z",
+        "position": "5G1NqobWwPJxcEnBVDb6id7qCaAykFZNhUzZEKkjj3UC",
+        "pnl_pct": 0.12,
+        "pnl_usd": 0.0296,
+        "in_range": false,
+        "unclaimed_fees_usd": 0.0002,
+        "minutes_out_of_range": 6,
+        "age_minutes": 6
+      },
+      {
+        "ts": "2026-06-14T19:16:35.032Z",
+        "position": "9u5JKUW3RWepfsdxU7AP3fu4Ri1hxAo9nrFugpro9swY",
+        "pnl_pct": -100,
+        "pnl_usd": -25.007,
+        "in_range": true,
+        "unclaimed_fees_usd": 0,
+        "minutes_out_of_range": 0,
+        "age_minutes": 0
+      }
+    ],
+    "tags": [
+      "efficient",
+      "bid_ask",
+      "failed"
+    ]
+  },
+  "2aXSgGgsSMazk7Vgs1ZRnuccX2mVWSVXHnCCMz4rByjZ": {
+    "name": "TURTLE-SOL",
+    "base_mint": "2dJniDEAGCG7zWKseCkyrML3W23WLjDf1CGxpNv3pump",
+    "deploys": [
+      {
+        "deployed_at": null,
+        "closed_at": "2026-06-14T17:48:21.999Z",
+        "pnl_pct": 1.81,
+        "pnl_usd": 0.45,
+        "fees_earned_usd": 0.5030661112890028,
+        "fees_earned_sol": null,
+        "fee_earned_pct": 2.0093368983581814,
+        "range_efficiency": 79,
+        "minutes_held": 81,
+        "close_reason": "Rule 3: pumped far above range",
+        "strategy": "bid_ask",
+        "volatility_at_deploy": null
+      }
+    ],
+    "total_deploys": 1,
+    "avg_pnl_pct": 1.81,
+    "win_rate": 1,
+    "adjusted_win_rate": 0,
+    "adjusted_win_rate_sample_count": 0,
+    "last_deployed_at": "2026-06-14T17:48:21.999Z",
+    "last_outcome": "profit",
+    "notes": [],
+    "snapshots": [
+      {
+        "ts": "2026-06-14T16:30:01.384Z",
+        "position": "AXEQZGjoypwErGEu2xZRUFoPLExw1GtBhaHZiB1n9rDt",
+        "pnl_pct": -0.01,
+        "pnl_usd": -0.0016,
+        "in_range": false,
+        "unclaimed_fees_usd": 0,
+        "minutes_out_of_range": 0,
+        "age_minutes": 3
+      },
+      {
+        "ts": "2026-06-14T16:35:01.414Z",
+        "position": "AXEQZGjoypwErGEu2xZRUFoPLExw1GtBhaHZiB1n9rDt",
+        "pnl_pct": -0.01,
+        "pnl_usd": -0.0014,
+        "in_range": true,
+        "unclaimed_fees_usd": 0.0007,
+        "minutes_out_of_range": 0,
+        "age_minutes": 8
+      },
+      {
+        "ts": "2026-06-14T16:40:07.654Z",
+        "position": "AXEQZGjoypwErGEu2xZRUFoPLExw1GtBhaHZiB1n9rDt",
+        "pnl_pct": -0.11,
+        "pnl_usd": -0.0276,
+        "in_range": true,
+        "unclaimed_fees_usd": 0.002,
+        "minutes_out_of_range": 0,
+        "age_minutes": 13
+      },
+      {
+        "ts": "2026-06-14T16:45:04.644Z",
+        "position": "AXEQZGjoypwErGEu2xZRUFoPLExw1GtBhaHZiB1n9rDt",
+        "pnl_pct": -0.02,
+        "pnl_usd": -0.004,
+        "in_range": true,
+        "unclaimed_fees_usd": 0.002,
+        "minutes_out_of_range": 0,
+        "age_minutes": 18
+      },
+      {
+        "ts": "2026-06-14T16:50:05.208Z",
+        "position": "AXEQZGjoypwErGEu2xZRUFoPLExw1GtBhaHZiB1n9rDt",
+        "pnl_pct": -0.23,
+        "pnl_usd": -0.0566,
+        "in_range": true,
+        "unclaimed_fees_usd": 0.0563,
+        "minutes_out_of_range": 0,
+        "age_minutes": 23
+      },
+      {
+        "ts": "2026-06-14T16:55:02.718Z",
+        "position": "AXEQZGjoypwErGEu2xZRUFoPLExw1GtBhaHZiB1n9rDt",
+        "pnl_pct": -0.35,
+        "pnl_usd": -0.0885,
+        "in_range": true,
+        "unclaimed_fees_usd": 0.0579,
+        "minutes_out_of_range": 0,
+        "age_minutes": 28
+      },
+      {
+        "ts": "2026-06-14T17:00:06.043Z",
+        "position": "AXEQZGjoypwErGEu2xZRUFoPLExw1GtBhaHZiB1n9rDt",
+        "pnl_pct": -0.54,
+        "pnl_usd": -0.136,
+        "in_range": true,
+        "unclaimed_fees_usd": 0.0691,
+        "minutes_out_of_range": 0,
+        "age_minutes": 33
+      },
+      {
+        "ts": "2026-06-14T17:05:04.321Z",
+        "position": "AXEQZGjoypwErGEu2xZRUFoPLExw1GtBhaHZiB1n9rDt",
+        "pnl_pct": -0.62,
+        "pnl_usd": -0.1561,
+        "in_range": true,
+        "unclaimed_fees_usd": 0.0811,
+        "minutes_out_of_range": 0,
+        "age_minutes": 38
+      },
+      {
+        "ts": "2026-06-14T17:10:03.784Z",
+        "position": "AXEQZGjoypwErGEu2xZRUFoPLExw1GtBhaHZiB1n9rDt",
+        "pnl_pct": -0.66,
+        "pnl_usd": -0.1652,
+        "in_range": true,
+        "unclaimed_fees_usd": 0.1022,
+        "minutes_out_of_range": 0,
+        "age_minutes": 43
+      },
+      {
+        "ts": "2026-06-14T17:15:04.431Z",
+        "position": "AXEQZGjoypwErGEu2xZRUFoPLExw1GtBhaHZiB1n9rDt",
+        "pnl_pct": 0.39,
+        "pnl_usd": 0.0976,
+        "in_range": true,
+        "unclaimed_fees_usd": 0.1695,
+        "minutes_out_of_range": 0,
+        "age_minutes": 48
+      },
+      {
+        "ts": "2026-06-14T17:20:03.366Z",
+        "position": "AXEQZGjoypwErGEu2xZRUFoPLExw1GtBhaHZiB1n9rDt",
+        "pnl_pct": 0.63,
+        "pnl_usd": 0.1584,
+        "in_range": true,
+        "unclaimed_fees_usd": 0.1803,
+        "minutes_out_of_range": 0,
+        "age_minutes": 53
+      },
+      {
+        "ts": "2026-06-14T17:25:03.877Z",
+        "position": "AXEQZGjoypwErGEu2xZRUFoPLExw1GtBhaHZiB1n9rDt",
+        "pnl_pct": 0.6,
+        "pnl_usd": 0.1507,
+        "in_range": true,
+        "unclaimed_fees_usd": 0.2264,
+        "minutes_out_of_range": 0,
+        "age_minutes": 58
+      },
+      {
+        "ts": "2026-06-14T17:30:04.914Z",
+        "position": "AXEQZGjoypwErGEu2xZRUFoPLExw1GtBhaHZiB1n9rDt",
+        "pnl_pct": -0.67,
+        "pnl_usd": -0.1681,
+        "in_range": true,
+        "unclaimed_fees_usd": 0.2545,
+        "minutes_out_of_range": 0,
+        "age_minutes": 63
+      },
+      {
+        "ts": "2026-06-14T17:35:04.030Z",
+        "position": "AXEQZGjoypwErGEu2xZRUFoPLExw1GtBhaHZiB1n9rDt",
+        "pnl_pct": 1.83,
+        "pnl_usd": 0.4592,
+        "in_range": false,
+        "unclaimed_fees_usd": 0.489,
+        "minutes_out_of_range": 3,
+        "age_minutes": 68
+      },
+      {
+        "ts": "2026-06-14T17:40:02.457Z",
+        "position": "AXEQZGjoypwErGEu2xZRUFoPLExw1GtBhaHZiB1n9rDt",
+        "pnl_pct": 1.67,
+        "pnl_usd": 0.4186,
+        "in_range": false,
+        "unclaimed_fees_usd": 0.4921,
+        "minutes_out_of_range": 8,
+        "age_minutes": 73
+      },
+      {
+        "ts": "2026-06-14T17:45:05.033Z",
+        "position": "AXEQZGjoypwErGEu2xZRUFoPLExw1GtBhaHZiB1n9rDt",
+        "pnl_pct": 1.8,
+        "pnl_usd": 0.4514,
+        "in_range": false,
+        "unclaimed_fees_usd": 0.4896,
+        "minutes_out_of_range": 13,
+        "age_minutes": 78
+      },
+      {
+        "ts": "2026-06-14T17:48:06.000Z",
+        "position": "AXEQZGjoypwErGEu2xZRUFoPLExw1GtBhaHZiB1n9rDt",
+        "pnl_pct": 1.94,
+        "pnl_usd": 0.4865,
+        "in_range": false,
+        "unclaimed_fees_usd": 0.4975,
+        "minutes_out_of_range": 17,
+        "age_minutes": 81
+      }
+    ],
+    "tags": [
+      "efficient",
+      "bid_ask"
+    ]
+  },
+  "8eAiYBthqQqQ29ntrRJoEhg7RF2vZya56P4wKDMvKHHV": {
+    "name": "Islands-SOL",
+    "base_mint": "yoA2CoHk6HRNtFuTP1kVt5xkcvG7mr5raQ5zuNxpump",
+    "deploys": [
+      {
+        "deployed_at": null,
+        "closed_at": "2026-06-15T01:22:37.377Z",
+        "pnl_pct": -0.38,
+        "pnl_usd": -0.1,
+        "fees_earned_usd": 0.000294528144521555,
+        "fees_earned_sol": null,
+        "fee_earned_pct": 0.0011200762433076382,
+        "range_efficiency": 4.5,
+        "minutes_held": 22,
+        "close_reason": "OOR - pumped above range (active -365 above upper -376), oor 21min, fee_per_tvl 0.07%",
+        "strategy": "bid_ask",
+        "volatility_at_deploy": null
+      }
+    ],
+    "total_deploys": 1,
+    "avg_pnl_pct": -0.38,
+    "win_rate": 0,
+    "adjusted_win_rate": 0,
+    "adjusted_win_rate_sample_count": 0,
+    "last_deployed_at": "2026-06-15T01:22:37.377Z",
+    "last_outcome": "loss",
+    "notes": [],
+    "snapshots": [
+      {
+        "ts": "2026-06-15T01:05:06.242Z",
+        "position": "CU7KhXsSRCxnsqsoq1u2ukxH9b8sFYgKU4LpzHj81AZU",
+        "pnl_pct": -0.36,
+        "pnl_usd": -0.0949,
+        "in_range": false,
+        "unclaimed_fees_usd": 0.0003,
+        "minutes_out_of_range": 3,
+        "age_minutes": 4
+      },
+      {
+        "ts": "2026-06-15T01:10:02.402Z",
+        "position": "CU7KhXsSRCxnsqsoq1u2ukxH9b8sFYgKU4LpzHj81AZU",
+        "pnl_pct": -0.26,
+        "pnl_usd": -0.0679,
+        "in_range": false,
+        "unclaimed_fees_usd": 0.0003,
+        "minutes_out_of_range": 8,
+        "age_minutes": 9
+      },
+      {
+        "ts": "2026-06-15T01:15:03.654Z",
+        "position": "CU7KhXsSRCxnsqsoq1u2ukxH9b8sFYgKU4LpzHj81AZU",
+        "pnl_pct": -0.42,
+        "pnl_usd": -0.1098,
+        "in_range": false,
+        "unclaimed_fees_usd": 0.0003,
+        "minutes_out_of_range": 13,
+        "age_minutes": 14
+      },
+      {
+        "ts": "2026-06-15T01:20:04.537Z",
+        "position": "CU7KhXsSRCxnsqsoq1u2ukxH9b8sFYgKU4LpzHj81AZU",
+        "pnl_pct": -0.32,
+        "pnl_usd": -0.0854,
+        "in_range": false,
+        "unclaimed_fees_usd": 0.0003,
+        "minutes_out_of_range": 18,
+        "age_minutes": 19
+      },
+      {
+        "ts": "2026-06-15T01:22:19.960Z",
+        "position": "CU7KhXsSRCxnsqsoq1u2ukxH9b8sFYgKU4LpzHj81AZU",
+        "pnl_pct": -0.4,
+        "pnl_usd": -0.1064,
+        "in_range": false,
+        "unclaimed_fees_usd": 0.0003,
+        "minutes_out_of_range": 21,
+        "age_minutes": 22
+      }
+    ],
+    "tags": [
+      "failed",
+      "bid_ask"
+    ]
+  },
+  "CQxWgeEk6kufAHcDen9QCkJN2GS3zYRLg5DPKyNtKhJA": {
+    "name": "GUARDIAN-SOL",
+    "base_mint": "7YMkZZwdcwUbXKjYpr5gFAVoB6aF4f9iLWK6pUcppump",
+    "deploys": [
+      {
+        "deployed_at": null,
+        "closed_at": "2026-06-15T06:43:20.274Z",
+        "pnl_pct": 0.38,
+        "pnl_usd": 0.1,
+        "fees_earned_usd": 0.01216287536075992,
+        "fees_earned_sol": null,
+        "fee_earned_pct": 0.046281838152369706,
+        "range_efficiency": 75.6,
+        "minutes_held": 82,
+        "close_reason": "Rule 3: pumped far above range",
+        "strategy": "bid_ask",
+        "volatility_at_deploy": null
+      }
+    ],
+    "total_deploys": 1,
+    "avg_pnl_pct": 0.38,
+    "win_rate": 1,
+    "adjusted_win_rate": 0,
+    "adjusted_win_rate_sample_count": 0,
+    "last_deployed_at": "2026-06-15T06:43:20.274Z",
+    "last_outcome": "profit",
+    "notes": [],
+    "snapshots": [
+      {
+        "ts": "2026-06-15T05:25:04.858Z",
+        "position": "3FAjUL5qd9EUwiPHqZYgx2TfHL5fiSaZaRLue7KxwnMo",
+        "pnl_pct": 0.04,
+        "pnl_usd": 0.0102,
+        "in_range": false,
+        "unclaimed_fees_usd": 0.0002,
+        "minutes_out_of_range": 1,
+        "age_minutes": 3
+      },
+      {
+        "ts": "2026-06-15T05:30:03.844Z",
+        "position": "3FAjUL5qd9EUwiPHqZYgx2TfHL5fiSaZaRLue7KxwnMo",
+        "pnl_pct": 0.16,
+        "pnl_usd": 0.0417,
+        "in_range": false,
+        "unclaimed_fees_usd": 0.0002,
+        "minutes_out_of_range": 5,
+        "age_minutes": 8
+      },
+      {
+        "ts": "2026-06-15T05:35:03.875Z",
+        "position": "3FAjUL5qd9EUwiPHqZYgx2TfHL5fiSaZaRLue7KxwnMo",
+        "pnl_pct": -0.02,
+        "pnl_usd": -0.0057,
+        "in_range": false,
+        "unclaimed_fees_usd": 0.0002,
+        "minutes_out_of_range": 10,
+        "age_minutes": 13
+      },
+      {
+        "ts": "2026-06-15T05:40:04.744Z",
+        "position": "3FAjUL5qd9EUwiPHqZYgx2TfHL5fiSaZaRLue7KxwnMo",
+        "pnl_pct": -0.21,
+        "pnl_usd": -0.0559,
+        "in_range": false,
+        "unclaimed_fees_usd": 0.0002,
+        "minutes_out_of_range": 15,
+        "age_minutes": 18
+      },
+      {
+        "ts": "2026-06-15T05:45:04.447Z",
+        "position": "3FAjUL5qd9EUwiPHqZYgx2TfHL5fiSaZaRLue7KxwnMo",
+        "pnl_pct": -0.13,
+        "pnl_usd": -0.0334,
+        "in_range": false,
+        "unclaimed_fees_usd": 0.0002,
+        "minutes_out_of_range": 20,
+        "age_minutes": 23
+      },
+      {
+        "ts": "2026-06-15T05:46:04.799Z",
+        "position": "3FAjUL5qd9EUwiPHqZYgx2TfHL5fiSaZaRLue7KxwnMo",
+        "pnl_pct": -0.07,
+        "pnl_usd": -0.0188,
+        "in_range": true,
+        "unclaimed_fees_usd": 0.0002,
+        "minutes_out_of_range": 0,
+        "age_minutes": 24
+      },
+      {
+        "ts": "2026-06-15T05:50:04.259Z",
+        "position": "3FAjUL5qd9EUwiPHqZYgx2TfHL5fiSaZaRLue7KxwnMo",
+        "pnl_pct": -0.07,
+        "pnl_usd": -0.0197,
+        "in_range": true,
+        "unclaimed_fees_usd": 0.0012,
+        "minutes_out_of_range": 0,
+        "age_minutes": 28
+      },
+      {
+        "ts": "2026-06-15T05:55:05.004Z",
+        "position": "3FAjUL5qd9EUwiPHqZYgx2TfHL5fiSaZaRLue7KxwnMo",
+        "pnl_pct": 0.21,
+        "pnl_usd": 0.0544,
+        "in_range": true,
+        "unclaimed_fees_usd": 0.0046,
+        "minutes_out_of_range": 0,
+        "age_minutes": 33
+      },
+      {
+        "ts": "2026-06-15T06:00:10.520Z",
+        "position": "3FAjUL5qd9EUwiPHqZYgx2TfHL5fiSaZaRLue7KxwnMo",
+        "pnl_pct": 0.21,
+        "pnl_usd": 0.0562,
+        "in_range": true,
+        "unclaimed_fees_usd": 0.0048,
+        "minutes_out_of_range": 0,
+        "age_minutes": 38
+      },
+      {
+        "ts": "2026-06-15T06:05:03.238Z",
+        "position": "3FAjUL5qd9EUwiPHqZYgx2TfHL5fiSaZaRLue7KxwnMo",
+        "pnl_pct": 0.15,
+        "pnl_usd": 0.0394,
+        "in_range": true,
+        "unclaimed_fees_usd": 0.0048,
+        "minutes_out_of_range": 0,
+        "age_minutes": 43
+      },
+      {
+        "ts": "2026-06-15T06:10:02.691Z",
+        "position": "3FAjUL5qd9EUwiPHqZYgx2TfHL5fiSaZaRLue7KxwnMo",
+        "pnl_pct": 0.14,
+        "pnl_usd": 0.0367,
+        "in_range": true,
+        "unclaimed_fees_usd": 0.0049,
+        "minutes_out_of_range": 0,
+        "age_minutes": 48
+      },
+      {
+        "ts": "2026-06-15T06:15:06.282Z",
+        "position": "3FAjUL5qd9EUwiPHqZYgx2TfHL5fiSaZaRLue7KxwnMo",
+        "pnl_pct": 0.5,
+        "pnl_usd": 0.1323,
+        "in_range": true,
+        "unclaimed_fees_usd": 0.008,
+        "minutes_out_of_range": 0,
+        "age_minutes": 53
+      },
+      {
+        "ts": "2026-06-15T06:20:04.617Z",
+        "position": "3FAjUL5qd9EUwiPHqZYgx2TfHL5fiSaZaRLue7KxwnMo",
+        "pnl_pct": 0.16,
+        "pnl_usd": 0.0424,
+        "in_range": true,
+        "unclaimed_fees_usd": 0.011,
+        "minutes_out_of_range": 0,
+        "age_minutes": 58
+      },
+      {
+        "ts": "2026-06-15T06:25:06.135Z",
+        "position": "3FAjUL5qd9EUwiPHqZYgx2TfHL5fiSaZaRLue7KxwnMo",
+        "pnl_pct": 0.33,
+        "pnl_usd": 0.0878,
+        "in_range": false,
+        "unclaimed_fees_usd": 0.0114,
+        "minutes_out_of_range": 2,
+        "age_minutes": 63
+      },
+      {
+        "ts": "2026-06-15T06:30:07.188Z",
+        "position": "3FAjUL5qd9EUwiPHqZYgx2TfHL5fiSaZaRLue7KxwnMo",
+        "pnl_pct": 0.47,
+        "pnl_usd": 0.1241,
+        "in_range": false,
+        "unclaimed_fees_usd": 0.0117,
+        "minutes_out_of_range": 7,
+        "age_minutes": 68
+      },
+      {
+        "ts": "2026-06-15T06:35:04.635Z",
+        "position": "3FAjUL5qd9EUwiPHqZYgx2TfHL5fiSaZaRLue7KxwnMo",
+        "pnl_pct": 0.2,
+        "pnl_usd": 0.053,
+        "in_range": false,
+        "unclaimed_fees_usd": 0.0114,
+        "minutes_out_of_range": 12,
+        "age_minutes": 73
+      },
+      {
+        "ts": "2026-06-15T06:40:06.751Z",
+        "position": "3FAjUL5qd9EUwiPHqZYgx2TfHL5fiSaZaRLue7KxwnMo",
+        "pnl_pct": 0.3,
+        "pnl_usd": 0.0781,
+        "in_range": false,
+        "unclaimed_fees_usd": 0.0118,
+        "minutes_out_of_range": 17,
+        "age_minutes": 78
+      },
+      {
+        "ts": "2026-06-15T06:43:05.342Z",
+        "position": "3FAjUL5qd9EUwiPHqZYgx2TfHL5fiSaZaRLue7KxwnMo",
+        "pnl_pct": 0.37,
+        "pnl_usd": 0.097,
+        "in_range": false,
+        "unclaimed_fees_usd": 0.0122,
+        "minutes_out_of_range": 20,
+        "age_minutes": 81
+      }
+    ],
+    "tags": [
+      "efficient",
+      "bid_ask"
+    ]
+  },
+  "DHNEnZthEpzQu9nkwwZK58ghFaMdep8M5wB29QM7svUr": {
+    "name": "XP-SOL",
+    "base_mint": "9spN3Lrz4tnFXaXfR9QzKdiMd2hE4AUbAJntui21pump",
+    "deploys": [
+      {
+        "deployed_at": null,
+        "closed_at": "2026-06-15T05:46:22.500Z",
+        "pnl_pct": -0.12,
+        "pnl_usd": -0.02,
+        "fees_earned_usd": 2.12888329729e-7,
+        "fees_earned_sol": null,
+        "fee_earned_pct": 0.0000011098192800442833,
+        "range_efficiency": 30,
+        "minutes_held": 10,
+        "close_reason": "Pumped far above range, OOR 7min, pnl -0.36%, no fees",
+        "strategy": "bid_ask",
+        "volatility_at_deploy": null
+      }
+    ],
+    "total_deploys": 1,
+    "avg_pnl_pct": -0.12,
+    "win_rate": 0,
+    "adjusted_win_rate": 0,
+    "adjusted_win_rate_sample_count": 0,
+    "last_deployed_at": "2026-06-15T05:46:22.500Z",
+    "last_outcome": "loss",
+    "notes": [],
+    "snapshots": [
+      {
+        "ts": "2026-06-15T05:40:04.744Z",
+        "position": "BZyMW7QVVi4K4tTKUjfcHyXyhnmRpcCFhY8a2S5F27cU",
+        "pnl_pct": -0.5,
+        "pnl_usd": -0.0968,
+        "in_range": false,
+        "unclaimed_fees_usd": 0,
+        "minutes_out_of_range": 1,
+        "age_minutes": 3
+      },
+      {
+        "ts": "2026-06-15T05:45:04.448Z",
+        "position": "BZyMW7QVVi4K4tTKUjfcHyXyhnmRpcCFhY8a2S5F27cU",
+        "pnl_pct": -0.42,
+        "pnl_usd": -0.0804,
+        "in_range": false,
+        "unclaimed_fees_usd": 0,
+        "minutes_out_of_range": 6,
+        "age_minutes": 8
+      },
+      {
+        "ts": "2026-06-15T05:46:04.799Z",
+        "position": "BZyMW7QVVi4K4tTKUjfcHyXyhnmRpcCFhY8a2S5F27cU",
+        "pnl_pct": -0.36,
+        "pnl_usd": -0.0698,
+        "in_range": false,
+        "unclaimed_fees_usd": 0,
+        "minutes_out_of_range": 7,
+        "age_minutes": 9
+      }
+    ],
+    "tags": [
+      "failed",
+      "bid_ask"
+    ]
+  }
+}

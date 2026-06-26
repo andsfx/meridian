@@ -1,0 +1,545 @@
+{
+  "rejects": {
+    "TESTStack1781452413025": {
+      "rejects": [
+        {
+          "timestamp": "2026-06-14T15:53:33.028Z",
+          "reason": "organic score 30 < 40 (bot-driven pool)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-14T15:53:33.029Z",
+          "reason": "organic score 30 < 40 (bot-driven pool)",
+          "transient": false
+        }
+      ],
+      "cooldownUntil": "2026-06-14T16:53:33.029Z"
+    },
+    "JCKwsT8UAbygnFkZ7u3amDUM7BXRtwUhCsHQv2khpump": {
+      "rejects": [
+        {
+          "timestamp": "2026-06-14T22:16:02.023Z",
+          "reason": "mcap $276217 < $300000 (too small)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-14T23:10:48.142Z",
+          "reason": "mcap $272419 < $300000 (too small)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-15T00:00:51.066Z",
+          "reason": "mcap $223683 < $300000 (too small)",
+          "transient": false
+        }
+      ],
+      "cooldownUntil": null
+    },
+    "EeJtbbF4F8vuzju61czDZKGKuETLWiPBdomyWaRgpump": {
+      "rejects": [
+        {
+          "timestamp": "2026-06-14T15:55:53.600Z",
+          "reason": "fee/TVL 2.50% > max 1.50% (trap: artificial high fee/TVL on low TVL or wash trading)",
+          "transient": true
+        },
+        {
+          "timestamp": "2026-06-14T16:25:56.305Z",
+          "reason": "fee/TVL 1.69% > max 1.50% (trap: artificial high fee/TVL on low TVL or wash trading)",
+          "transient": true
+        },
+        {
+          "timestamp": "2026-06-14T16:31:00.668Z",
+          "reason": "fee/TVL 1.80% > max 1.50% (trap: artificial high fee/TVL on low TVL or wash trading)",
+          "transient": true
+        },
+        {
+          "timestamp": "2026-06-14T16:36:13.522Z",
+          "reason": "fee/TVL 2.32% > max 1.50% (trap: artificial high fee/TVL on low TVL or wash trading)",
+          "transient": true
+        },
+        {
+          "timestamp": "2026-06-14T16:46:03.456Z",
+          "reason": "fee/TVL 4.14% > max 1.50% (trap: artificial high fee/TVL on low TVL or wash trading)",
+          "transient": true
+        },
+        {
+          "timestamp": "2026-06-14T16:51:08.750Z",
+          "reason": "fee/TVL 4.01% > max 1.50% (trap: artificial high fee/TVL on low TVL or wash trading)",
+          "transient": true
+        },
+        {
+          "timestamp": "2026-06-14T17:16:12.505Z",
+          "reason": "mcap $101956 < $300000 (too small)",
+          "transient": false
+        }
+      ],
+      "cooldownUntil": null
+    },
+    "3WjLscH2JsXLEFJZRA9z8ti8yRGxWGKbqymPd7UicRth": {
+      "rejects": [
+        {
+          "timestamp": "2026-06-15T00:50:57.394Z",
+          "reason": "volatility 2.92 > max 1.5 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-15T01:00:01.850Z",
+          "reason": "volatility 3.52 > max 1.5 (too hot for sideways fee farmer)",
+          "transient": false
+        }
+      ],
+      "cooldownUntil": null
+    },
+    "EQHgekT3TAyNqXmENfgbexxzBj6rQzXV6n5nEM89pump": {
+      "rejects": [
+        {
+          "timestamp": "2026-06-14T21:16:02.728Z",
+          "reason": "mcap $121243 < $300000 (too small)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-14T22:16:02.026Z",
+          "reason": "mcap $110890 < $300000 (too small)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-14T22:31:00.578Z",
+          "reason": "mcap $109050 < $300000 (too small)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-14T22:36:13.489Z",
+          "reason": "fee/TVL 1.68% > max 1.50% (trap: artificial high fee/TVL on low TVL or wash trading)",
+          "transient": true
+        },
+        {
+          "timestamp": "2026-06-14T22:46:04.184Z",
+          "reason": "fee/TVL 2.40% > max 1.50% (trap: artificial high fee/TVL on low TVL or wash trading)",
+          "transient": true
+        }
+      ],
+      "cooldownUntil": null
+    },
+    "B7a9wpdcdSt44Y9iHqrMYo9yuntqtEV25irTS5YRpump": {
+      "rejects": [
+        {
+          "timestamp": "2026-06-14T23:35:56.110Z",
+          "reason": "mcap $188767 < $300000 (too small)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-14T23:40:56.781Z",
+          "reason": "mcap $159883 < $300000 (too small)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-14T23:45:44.007Z",
+          "reason": "mcap $162268 < $300000 (too small)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-15T00:15:40.679Z",
+          "reason": "mcap $138093 < $300000 (too small)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-15T00:45:47.132Z",
+          "reason": "mcap $148171 < $300000 (too small)",
+          "transient": false
+        }
+      ],
+      "cooldownUntil": "2026-06-15T01:45:47.132Z"
+    },
+    "w9Fh8VWmytLKo48AbnDf3vVdzN5SzpG6gFwmxeLpump": {
+      "rejects": [
+        {
+          "timestamp": "2026-06-15T00:55:37.354Z",
+          "reason": "fee/TVL 0.0466% in scout range but pool qualityScore 59.9 < 70 (scout_only rejected)",
+          "transient": false
+        }
+      ],
+      "cooldownUntil": null
+    },
+    "DY2ZAaZrt27b3PpXjxH8qqDBZwrEoFoSqb83t7VNpump": {
+      "rejects": [
+        {
+          "timestamp": "2026-06-14T22:41:00.250Z",
+          "reason": "mcap $198896 < $300000 (too small)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-14T22:46:04.183Z",
+          "reason": "mcap $202366 < $300000 (too small)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-14T23:20:57.664Z",
+          "reason": "fee/TVL 0.0675% in scout range but pool qualityScore 68.6 < 70 (scout_only rejected)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-15T00:00:51.065Z",
+          "reason": "mcap $188193 < $300000 (too small)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-15T00:40:56.456Z",
+          "reason": "mcap $199131 < $300000 (too small)",
+          "transient": false
+        }
+      ],
+      "cooldownUntil": "2026-06-15T01:40:56.456Z"
+    },
+    "7YMkZZwdcwUbXKjYpr5gFAVoB6aF4f9iLWK6pUcppump": {
+      "rejects": [
+        {
+          "timestamp": "2026-06-15T01:00:01.855Z",
+          "reason": "volatility 3.47 > max 3 (too hot for sideways fee farmer even with watchlist boost)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-15T01:30:58.839Z",
+          "reason": "volatility 3.27 > max 3 (too hot for sideways fee farmer even with watchlist boost)",
+          "transient": false
+        }
+      ],
+      "cooldownUntil": null
+    },
+    "AvxFBjWydMYWD7C8pHzSkGxNYAFWr7aNBbAKm84bpump": {
+      "rejects": [
+        {
+          "timestamp": "2026-06-14T23:25:59.239Z",
+          "reason": "mcap $204477 < $300000 (too small)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-14T23:40:56.782Z",
+          "reason": "mcap $191674 < $300000 (too small)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-15T01:25:58.748Z",
+          "reason": "fee/TVL 0.0555% in scout range but pool qualityScore 66.1 < 70 (scout_only rejected)",
+          "transient": false
+        }
+      ],
+      "cooldownUntil": null
+    },
+    "Cy1mCA7qAe7AWABiPCBt7V11SfbjhHM7UBpd9TAXpump": {
+      "rejects": [
+        {
+          "timestamp": "2026-06-14T16:10:54.514Z",
+          "reason": "mcap $105747 < $300000 (too small)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-14T16:15:59.068Z",
+          "reason": "mcap $111455 < $300000 (too small)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-14T16:21:14.458Z",
+          "reason": "mcap $119563 < $300000 (too small)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-14T16:25:56.307Z",
+          "reason": "mcap $103507 < $300000 (too small)",
+          "transient": false
+        }
+      ],
+      "cooldownUntil": null
+    },
+    "2dJniDEAGCG7zWKseCkyrML3W23WLjDf1CGxpNv3pump": {
+      "rejects": [
+        {
+          "timestamp": "2026-06-14T16:15:59.066Z",
+          "reason": "volatility 4.20 > max 4 (too hot for sideways fee farmer even with watchlist boost)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-14T16:21:14.455Z",
+          "reason": "volatility 4.01 > max 4 (too hot for sideways fee farmer even with watchlist boost)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-14T16:31:00.667Z",
+          "reason": "volatility 4.48 > max 4 (too hot for sideways fee farmer even with watchlist boost)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-14T17:35:46.421Z",
+          "reason": "fee/TVL 1.93% > max 1.50% (trap: artificial high fee/TVL on low TVL or wash trading even with watchlist boost)",
+          "transient": true
+        },
+        {
+          "timestamp": "2026-06-14T17:40:39.029Z",
+          "reason": "fee/TVL 1.69% > max 1.50% (trap: artificial high fee/TVL on low TVL or wash trading even with watchlist boost)",
+          "transient": true
+        },
+        {
+          "timestamp": "2026-06-14T17:45:58.751Z",
+          "reason": "fee/TVL 1.65% > max 1.50% (trap: artificial high fee/TVL on low TVL or wash trading even with watchlist boost)",
+          "transient": true
+        },
+        {
+          "timestamp": "2026-06-14T17:51:11.799Z",
+          "reason": "fee/TVL 1.55% > max 1.50% (trap: artificial high fee/TVL on low TVL or wash trading even with watchlist boost)",
+          "transient": true
+        },
+        {
+          "timestamp": "2026-06-14T17:56:05.525Z",
+          "reason": "fee/TVL 4.14% > max 1.50% (trap: artificial high fee/TVL on low TVL or wash trading even with watchlist boost)",
+          "transient": true
+        },
+        {
+          "timestamp": "2026-06-14T18:00:40.191Z",
+          "reason": "volatility 5.13 > max 3.2 (too hot for sideways fee farmer even with watchlist boost)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-14T18:05:48.296Z",
+          "reason": "fee/TVL 1.74% > max 1.50% (trap: artificial high fee/TVL on low TVL or wash trading even with watchlist boost)",
+          "transient": true
+        },
+        {
+          "timestamp": "2026-06-14T18:10:52.838Z",
+          "reason": "volatility 5.40 > max 3.2 (too hot for sideways fee farmer even with watchlist boost)",
+          "transient": false
+        }
+      ],
+      "cooldownUntil": "2026-06-14T19:10:52.838Z"
+    },
+    "6d9PCh5ocA2v4S7E6G1Hn1dfd72XxE8HJu22r4Sspump": {
+      "rejects": [
+        {
+          "timestamp": "2026-06-15T00:40:56.455Z",
+          "reason": "mcap $265118 < $300000 (too small)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-15T00:45:47.130Z",
+          "reason": "volatility 10.26 > max 1.5 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-15T00:50:57.392Z",
+          "reason": "volatility 10.28 > max 1.5 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-15T00:55:37.352Z",
+          "reason": "volatility 8.80 > max 1.5 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-15T01:00:01.853Z",
+          "reason": "volatility 7.77 > max 1.5 (too hot for sideways fee farmer)",
+          "transient": false
+        }
+      ],
+      "cooldownUntil": "2026-06-15T02:00:01.853Z"
+    },
+    "9smMJxtru37j29w7pfcQZfpKXdsUohuDXqHFaLJcpump": {
+      "rejects": [
+        {
+          "timestamp": "2026-06-14T18:35:47.049Z",
+          "reason": "mcap $143532 < $300000 (too small)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-14T19:05:59.113Z",
+          "reason": "mcap $124508 < $300000 (too small)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-14T19:20:51.808Z",
+          "reason": "mcap $121233 < $300000 (too small)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-14T20:15:59.552Z",
+          "reason": "mcap $109516 < $300000 (too small)",
+          "transient": false
+        }
+      ],
+      "cooldownUntil": null
+    },
+    "9ZtbETDNjnST9Y2zs82FZYy49xUMPgqXRh46YjjRpump": {
+      "rejects": [
+        {
+          "timestamp": "2026-06-15T00:25:41.360Z",
+          "reason": "mcap $102786 < $300000 (too small)",
+          "transient": false
+        }
+      ],
+      "cooldownUntil": null
+    },
+    "7KEyytbnnZCnoZ3QpLgH2gnoGdu864GBw2Q94AoRpump": {
+      "rejects": [
+        {
+          "timestamp": "2026-06-14T21:10:49.279Z",
+          "reason": "fee/TVL 3.17% > max 1.50% (trap: artificial high fee/TVL on low TVL or wash trading)",
+          "transient": true
+        },
+        {
+          "timestamp": "2026-06-14T21:16:02.727Z",
+          "reason": "fee/TVL 3.19% > max 1.50% (trap: artificial high fee/TVL on low TVL or wash trading)",
+          "transient": true
+        },
+        {
+          "timestamp": "2026-06-14T21:20:53.404Z",
+          "reason": "fee/TVL 2.18% > max 1.50% (trap: artificial high fee/TVL on low TVL or wash trading)",
+          "transient": true
+        },
+        {
+          "timestamp": "2026-06-14T21:25:53.543Z",
+          "reason": "fee/TVL 2.27% > max 1.50% (trap: artificial high fee/TVL on low TVL or wash trading)",
+          "transient": true
+        },
+        {
+          "timestamp": "2026-06-14T21:30:56.639Z",
+          "reason": "fee/TVL 2.01% > max 1.50% (trap: artificial high fee/TVL on low TVL or wash trading)",
+          "transient": true
+        },
+        {
+          "timestamp": "2026-06-14T21:35:51.993Z",
+          "reason": "fee/TVL 2.32% > max 1.50% (trap: artificial high fee/TVL on low TVL or wash trading)",
+          "transient": true
+        },
+        {
+          "timestamp": "2026-06-14T21:40:59.248Z",
+          "reason": "fee/TVL 1.64% > max 1.50% (trap: artificial high fee/TVL on low TVL or wash trading)",
+          "transient": true
+        },
+        {
+          "timestamp": "2026-06-14T21:45:55.261Z",
+          "reason": "fee/TVL 1.97% > max 1.50% (trap: artificial high fee/TVL on low TVL or wash trading)",
+          "transient": true
+        },
+        {
+          "timestamp": "2026-06-14T21:50:45.265Z",
+          "reason": "fee/TVL 1.83% > max 1.50% (trap: artificial high fee/TVL on low TVL or wash trading)",
+          "transient": true
+        },
+        {
+          "timestamp": "2026-06-14T21:55:41.247Z",
+          "reason": "fee/TVL 1.87% > max 1.50% (trap: artificial high fee/TVL on low TVL or wash trading)",
+          "transient": true
+        },
+        {
+          "timestamp": "2026-06-14T22:00:52.696Z",
+          "reason": "mcap $151321 < $300000 (too small)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-14T22:05:44.825Z",
+          "reason": "fee/TVL 2.28% > max 1.50% (trap: artificial high fee/TVL on low TVL or wash trading)",
+          "transient": true
+        },
+        {
+          "timestamp": "2026-06-14T22:10:48.508Z",
+          "reason": "fee/TVL 2.43% > max 1.50% (trap: artificial high fee/TVL on low TVL or wash trading)",
+          "transient": true
+        },
+        {
+          "timestamp": "2026-06-14T22:16:02.022Z",
+          "reason": "fee/TVL 2.50% > max 1.50% (trap: artificial high fee/TVL on low TVL or wash trading)",
+          "transient": true
+        },
+        {
+          "timestamp": "2026-06-14T22:41:00.251Z",
+          "reason": "fee/TVL 1.77% > max 1.50% (trap: artificial high fee/TVL on low TVL or wash trading)",
+          "transient": true
+        },
+        {
+          "timestamp": "2026-06-14T22:46:04.183Z",
+          "reason": "mcap $189318 < $300000 (too small)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-14T22:51:01.686Z",
+          "reason": "mcap $204538 < $300000 (too small)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-14T22:55:47.806Z",
+          "reason": "fee/TVL 1.80% > max 1.50% (trap: artificial high fee/TVL on low TVL or wash trading)",
+          "transient": true
+        },
+        {
+          "timestamp": "2026-06-14T23:00:39.147Z",
+          "reason": "fee/TVL 2.22% > max 1.50% (trap: artificial high fee/TVL on low TVL or wash trading)",
+          "transient": true
+        },
+        {
+          "timestamp": "2026-06-14T23:05:50.082Z",
+          "reason": "fee/TVL 2.13% > max 1.50% (trap: artificial high fee/TVL on low TVL or wash trading)",
+          "transient": true
+        },
+        {
+          "timestamp": "2026-06-14T23:10:48.141Z",
+          "reason": "fee/TVL 4.30% > max 1.50% (trap: artificial high fee/TVL on low TVL or wash trading)",
+          "transient": true
+        }
+      ],
+      "cooldownUntil": null
+    },
+    "6KDh3wLSZMg37nnU7prtKZr7Rut7WQGSf33Vp1G7pump": {
+      "rejects": [
+        {
+          "timestamp": "2026-06-15T00:25:41.356Z",
+          "reason": "fee/TVL 1.79% > max 1.50% (trap: artificial high fee/TVL on low TVL or wash trading)",
+          "transient": true
+        },
+        {
+          "timestamp": "2026-06-15T00:30:40.551Z",
+          "reason": "fee/TVL 0.0747% in scout range but pool qualityScore 62.4 < 70 (scout_only rejected)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-15T00:35:40.388Z",
+          "reason": "mcap $133890 < $300000 (too small)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-15T00:45:47.131Z",
+          "reason": "mcap $114144 < $300000 (too small)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-15T00:50:57.393Z",
+          "reason": "mcap $141942 < $300000 (too small)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-15T01:00:01.856Z",
+          "reason": "volatility 9.55 > max 1.5 (too hot for sideways fee farmer)",
+          "transient": false
+        }
+      ],
+      "cooldownUntil": "2026-06-15T02:00:01.856Z"
+    },
+    "9spN3Lrz4tnFXaXfR9QzKdiMd2hE4AUbAJntui21pump": {
+      "rejects": [
+        {
+          "timestamp": "2026-06-15T01:25:58.747Z",
+          "reason": "volatility 3.94 > max 1.5 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-15T01:30:58.838Z",
+          "reason": "volatility 3.73 > max 1.5 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-15T01:35:59.038Z",
+          "reason": "volatility 3.27 > max 1.5 (too hot for sideways fee farmer)",
+          "transient": false
+        }
+      ],
+      "cooldownUntil": null
+    }
+  },
+  "lastUpdated": "2026-06-15T01:35:59.038Z"
+}

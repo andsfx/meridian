@@ -2,6 +2,9 @@ import dotenv from "dotenv";
 // Load .env before anything else
 dotenv.config();
 
+console.log('[DEBUG] RPC_URL:', process.env.RPC_URL);
+console.log('[DEBUG] HELIUS_API_KEY:', process.env.HELIUS_API_KEY);
+
 import fs from "fs";
 import cron from "node-cron";
 import readline from "readline";
@@ -9,7 +12,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { agentLoop } from "./agent.js";
 import { log } from "./logger.js";
-import { getMyPositions, closePosition, getActiveBin } from "./tools/dlmm.js";
+import { getMyPositions, closePosition, claimFees, getActiveBin } from "./tools/dlmm.js";
 import { getWalletBalances } from "./tools/wallet.js";
 import { getTopCandidates } from "./tools/screening.js";
 import { formatGmgnCandidateForPrompt } from "./tools/gmgn.js";
@@ -364,10 +367,39 @@ export async function runManagementCycle({ silent = false } = {}) {
       return a.action !== "STAY";
     });
 
-    if (actionPositions.length > 0) {
-      log("cron", `Management: ${actionPositions.length} action(s) needed — invoking LLM [model: ${config.llm.managementModel}]`);
+    // ── DIRECT CLOSE: Execute critical exits WITHOUT LLM ─────────────
+    // Trailing TP and stop loss are deterministic — never gate on LLM availability
+    const criticalExits = actionPositions.filter(p => {
+      const act = actionMap.get(p.position);
+      return act.action === "CLOSE" && act.rule === "exit";
+    });
+    const criticalCloseErrors = [];
+    for (const p of criticalExits) {
+      const act = actionMap.get(p.position);
       try {
-        const actionBlocks = actionPositions.map((p) => {
+        log("cron", `⚡ Direct close (no LLM): ${p.pair} — ${act.reason}`);
+        const result = await closePosition({ position_address: p.position, reason: act.reason || "direct exit" });
+        if (result?.success !== false) {
+          mgmtReport += `\n⚡ Direct close: ${p.pair} — ${act.reason}`;
+        } else {
+          criticalCloseErrors.push(`${p.pair}: ${result?.error || "close failed"}`);
+        }
+      } catch (e) {
+        criticalCloseErrors.push(`${p.pair}: ${e.message}`);
+        log("cron_error", `Direct close failed for ${p.pair}: ${e.message}`);
+      }
+    }
+    if (criticalCloseErrors.length) {
+      mgmtReport += `\n⚠️ Direct close errors: ${criticalCloseErrors.join("; ")}`;
+    }
+
+    // Remove already-closed critical exits from LLM processing
+    const llmActionPositions = actionPositions.filter(p => !criticalExits.includes(p));
+
+    if (llmActionPositions.length > 0) {
+      log("cron", `Management: ${llmActionPositions.length} action(s) needed — invoking LLM [model: ${config.llm.managementModel}]`);
+      try {
+        const actionBlocks = llmActionPositions.map((p) => {
           const act = actionMap.get(p.position);
           return [
             `POSITION: ${p.pair} (${p.position})`,
@@ -379,8 +411,9 @@ export async function runManagementCycle({ silent = false } = {}) {
           ].filter(Boolean).join("\n");
         }).join("\n\n");
 
-        const { content } = await agentLoop(`
-MANAGEMENT ACTION REQUIRED — ${actionPositions.length} position(s)
+        const { content } = await agentLoop(
+          `
+MANAGEMENT ACTION REQUIRED — ${llmActionPositions.length} position(s)
 
 ${actionBlocks}
 
@@ -388,14 +421,41 @@ RULES:
 - CLOSE: call close_position only — it handles fee claiming internally, do NOT call claim_fees first
 - CLAIM: call claim_fees with position address
 - INSTRUCTION: evaluate the instruction condition. If met → close_position. If not → HOLD, do nothing.
-- ⚡ exit alerts: close immediately, no exceptions
+- ⚡ exit alerts: close immediately, no exception
 
 Execute the required actions. Do NOT re-evaluate CLOSE/CLAIM — rules already applied. Just execute.
-`);
+`,
+          config.llm.maxSteps,
+          [],
+          "GENERAL",
+          config.llm.managementModel
+        );
         mgmtReport += `\n\n🤖 <b>Agent Response</b>\n${content}`;
       } catch (error) {
         log("cron_error", `Agent loop failed: ${error.stack || error.message}`);
         mgmtReport += `\n\n❌ <b>Agent Error</b>\n${error.message}`;
+        // Hardcoded fallback: execute CLOSE/CLAIM directly without LLM
+        const closeErrors = [];
+        for (const ap of actionPositions) {
+          const act = actionMap.get(ap.position);
+          try {
+            if (act.action === "CLOSE") {
+              log("cron", `Hardcoded close: ${ap.pair} — ${act.reason}`);
+              const result = await closePosition({ position_address: ap.position, reason: act.reason || "hardcoded fallback" });
+              if (result?.success !== false) mgmtReport += `\n✅ Hardcoded close: ${ap.pair}`;
+              else closeErrors.push(`${ap.pair}: ${result?.error || "close failed"}`);
+            } else if (act.action === "CLAIM") {
+              log("cron", `Hardcoded claim: ${ap.pair}`);
+              await claimFees({ position_address: ap.position });
+              mgmtReport += `\n✅ Hardcoded claim: ${ap.pair}`;
+            }
+          } catch (e) {
+            closeErrors.push(`${ap.pair}: ${e.message}`);
+          }
+        }
+        if (closeErrors.length) {
+          mgmtReport += `\n⚠️ Hardcoded errors: ${closeErrors.join("; ")}`;
+        }
       }
     } else {
       log("cron", "Management: all positions STAY — skipping LLM");
@@ -857,6 +917,21 @@ Summarize the current portfolio health, total fees earned, and performance of al
               scheduleTrailingDropConfirmation(p.position);
             }
             continue;
+          }
+          // ── DIRECT CLOSE: critical exits bypass LLM entirely ─────────
+          if (exit.action === "STOP_LOSS" || (exit.action === "TRAILING_TP" && !exit.needs_confirmation)) {
+            try {
+              log("state", `[PnL poll] ⚡ Direct close (no LLM): ${p.pair} — ${exit.reason}`);
+              const result = await closePosition({ position_address: p.position, reason: exit.reason || "direct poll exit" });
+              if (result?.success !== false) {
+                log("state", `[PnL poll] ✅ Direct close OK: ${p.pair}`);
+              } else {
+                log("state", `[PnL poll] ⚠️ Direct close failed: ${p.pair}: ${result?.error || "unknown"}`);
+              }
+            } catch (e) {
+              log("cron_error", `[PnL poll] Direct close error: ${p.pair}: ${e.message}`);
+            }
+            break;
           }
           const cooldownMs = config.schedule.managementIntervalMin * 60 * 1000;
           const sinceLastTrigger = Date.now() - _pollTriggeredAt;
@@ -1978,7 +2053,10 @@ async function telegramHandler(msg) {
   if (text === "/hive" || text === "/hive pull") {
     try {
       const enabled = isHiveMindEnabled();
-      const agentId = ensureAgentId();
+      console.log('[DEBUG] RPC_URL:', process.env.RPC_URL);
+      console.log('[DEBUG] HELIUS_API_KEY:', process.env.HELIUS_API_KEY);
+
+      const agent = new Agent();
       if (!enabled) {
         await sendMessage([
           `🐝 <b>HiveMind</b> : disabled`,

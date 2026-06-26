@@ -428,109 +428,7 @@ export function evolveThresholds(perfData, config) {
     }
   }
 
-  // ── 3. stopLossPct ─────────────────────────────────────────────
-  // Evolve based on fee recovery vs loss severity.
-  // Tighten (more negative) if positions surviving > -5% but < 0% have high fee recovery.
-  // Loosen (less negative) if positions closing at -5% to -10% have low fee recovery.
-  {
-    const current = config.management?.stopLossPct ?? -10;
-    const borderlineLosers = windowData.filter((p) => p.pnl_pct != null && p.pnl_pct >= -10 && p.pnl_pct < 0);
-    const deepLosers = windowData.filter((p) => p.pnl_pct != null && p.pnl_pct < -10);
-
-    if (borderlineLosers.length >= 2) {
-      // Calculate fee recovery ratio (fees_earned_usd / |pnl_usd|)
-      const feeRecoveryRatios = borderlineLosers
-        .map((p) => (p.fees_earned_usd || 0) / Math.abs(p.pnl_usd || 1))
-        .filter(isFiniteNum);
-      
-      if (feeRecoveryRatios.length >= 2) {
-        const avgFeeRecovery = avg(feeRecoveryRatios);
-        if (avgFeeRecovery > 1.5) {
-          // Fees cover losses well — tighten SL (more negative)
-          const target = current * 1.1; // 10% more negative
-          const newVal = clamp(Math.round(target), -50, -1);
-          if (newVal < current) { // More negative
-            changes.stopLossPct = newVal;
-            rationale.stopLossPct = `Borderline losers (>-10%) have high fee recovery (${avgFeeRecovery.toFixed(2)}) — tightened SL from ${current}% → ${newVal}%`;
-          }
-        } else if (avgFeeRecovery < 0.5 && deepLosers.length === 0) {
-          // Low fee recovery, no deep losers — loosen SL (less negative)
-          const target = current * 0.9; // 10% less negative
-          const newVal = clamp(Math.round(target), -50, -1);
-          if (newVal > current) { // Less negative
-            changes.stopLossPct = newVal;
-            rationale.stopLossPct = `Borderline losers have low fee recovery (${avgFeeRecovery.toFixed(2)}) — loosened SL from ${current}% → ${newVal}%`;
-          }
-        }
-      }
-    }
-  }
-
-  // ── 4. binsAbove ───────────────────────────────────────────────
-  // Evolve based on Rule 3 close frequency vs volatility.
-  // Increase if Rule 3 closes occur in pools with volatility ≥ 7.
-  // Decrease if Rule 3 closes occur in pools with volatility < 7.
-  {
-    const rule3Closes = windowData.filter((p) => p.close_reason?.includes('Rule 3') || p.close_reason?.includes('pumped far above range'));
-    const highVolRule3 = rule3Closes.filter((p) => (p.volatility || 0) >= 7);
-    const lowVolRule3 = rule3Closes.filter((p) => (p.volatility || 0) < 7);
-    const current = config.binsAbove ?? 0;
-
-    if (rule3Closes.length >= 2) {
-      if (highVolRule3.length > lowVolRule3.length) {
-        // More Rule 3 closes in high vol — increase binsAbove
-        const target = current + 1;
-        const newVal = clamp(target, 0, 50);
-        if (newVal > current) {
-          changes.binsAbove = newVal;
-          rationale.binsAbove = `More Rule 3 closes in high vol (≥7) pools (${highVolRule3.length} vs ${lowVolRule3.length}) — increased binsAbove from ${current} → ${newVal}`;
-        }
-      } else if (lowVolRule3.length > highVolRule3.length) {
-        // More Rule 3 closes in low vol — decrease binsAbove (but not below 0)
-        const target = Math.max(0, current - 1);
-        const newVal = clamp(target, 0, 50);
-        if (newVal < current) {
-          changes.binsAbove = newVal;
-          rationale.binsAbove = `More Rule 3 closes in low vol (<7) pools (${lowVolRule3.length} vs ${highVolRule3.length}) — decreased binsAbove from ${current} → ${newVal}`;
-        }
-      }
-    }
-  }
-
-  // ── 4. minBinStep ───────────────────────────────────────────────
-  // Evolve based on volatility and performance.
-  // Lower minBinStep for high volatility pools if they perform well.
-  // Raise minBinStep for low volatility pools if they underperform.
-  {
-    const current = config.screening.minBinStep;
-    
-    // Group by volatility tier
-    const highVol = windowData.filter(p => p.volatility >= 6);
-    const lowVol = windowData.filter(p => p.volatility < 3);
-    
-    // High volatility winners with low bin_step
-    const highVolWinnersLowBin = highVol.filter(p => p.pnl_pct > 0 && p.bin_step < current);
-    if (highVolWinnersLowBin.length >= 2) {
-      // Find the highest performing bin_step below current
-      const bestBinStep = Math.max(...highVolWinnersLowBin.map(p => p.bin_step));
-      const target = Math.max(bestBinStep, 80); // Don't go below 80
-      if (target < current) {
-        changes.minBinStep = target;
-        rationale.minBinStep = `High volatility winners performed well at bin_step ${bestBinStep} — lowered from ${current} → ${target}`;
-      }
-    }
-    
-    // Low volatility losers with current bin_step
-    const lowVolLosers = lowVol.filter(p => p.pnl_pct < 0 && p.bin_step === current);
-    if (lowVolLosers.length >= 2) {
-      // Raise minBinStep to avoid low volatility pools, but cap at 100
-      const target = Math.min(current + 10, 100); // Don't exceed 100
-      if (target > current) {
-        changes.minBinStep = target;
-        rationale.minBinStep = `Low volatility pools underperformed at bin_step ${current} — raised to ${target}`;
-      }
-    }
-  }
+  // ── Hold-Time Learning (audit P2-C) ──────────────────────────
   // Strongest signal in 649-trade audit: 82.6% winrate at 240m+ hold.
   // Evolve outOfRangeWaitMinutes based on hold-bucket winrate pattern.
   {
@@ -576,38 +474,29 @@ export function evolveThresholds(perfData, config) {
   // Relaxes when funnel starves (< 3 deploys/week), tightens when win rate low (losers slipping through)
   // Read closed positions from state.json (perfData is the lesson DB, not the raw record)
   const s = config.screening;
-  const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
-  const recentClosed = perfData.filter((p) => {
-    const recorded = Date.parse(p.recorded_at);
-    return Number.isFinite(recorded) && Date.now() - recorded < SEVEN_DAYS;
-  });
+  let positions = [];
+  try {
+    const stateData = JSON.parse(fs.readFileSync(STATE_PATH, "utf8"));
+    positions = Object.values(stateData.positions || {}).filter((p) => p.closed_at);
+  } catch { /* ignore */ }
 
-  const recentWinners = recentClosed.filter((p) => (p.pnl_pct ?? 0) > 0);
+  const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
+  const recentClosed = positions.filter((p) => {
+    const closed = Date.parse(p.closed_at);
+    return Number.isFinite(closed) && Date.now() - closed < SEVEN_DAYS;
+  });
+  const recentWinners = recentClosed.filter((p) => (p.peak_pnl_pct ?? 0) > 5);
   const recentWinRate = recentClosed.length > 0 ? recentWinners.length / recentClosed.length : null;
 
-  // Helper: clamp + apply ±10% rate limit per evolution step + 24h cooldown
+  // Helper: clamp + apply ±20% rate limit per evolution step
   const adjustGate = (key, currentRaw, factor, floor, ceiling, reason) => {
     const current = Number(currentRaw);
     if (!Number.isFinite(current) || current <= 0) return null;
-    
-    // Check cooldown — only evolve once per day
-    const lastEvolveKey = `lastEvolve_${key}`;
-    const now = Date.now();
-    const lastEvolve = config[lastEvolveKey] || 0;
-    if (now - lastEvolve < 24 * 60 * 60 * 1000) {
-      return null; // Cooldown active
-    }
-    
     const target = Math.round(current * factor);
     const newVal = Math.max(floor, Math.min(ceiling, target));
     if (newVal === current) return null;
-    
     changes[key] = newVal;
     rationale[key] = `${reason} (${current} → ${newVal})`;
-    
-    // Record last evolve time
-    changes[lastEvolveKey] = now;
-    
     return newVal;
   };
 

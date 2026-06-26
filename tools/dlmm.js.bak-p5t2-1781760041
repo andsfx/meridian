@@ -584,10 +584,6 @@ export async function deployPosition({
   entry_tvl,
   entry_volume,
   entry_holders,
-  // P5 telemetry: price/volume change at deploy time
-  price_change_pct_at_deploy,
-  volume_change_pct_at_deploy,
-  tvl_change_pct_at_deploy,
 }) {
   pool_address = normalizeMint(pool_address);
   const activeStrategy = strategy || config.strategy.strategy;
@@ -829,9 +825,6 @@ export async function deployPosition({
           entry_tvl,
           entry_volume,
           entry_holders,
-          price_change_pct_at_deploy,
-          volume_change_pct_at_deploy,
-          tvl_change_pct_at_deploy,
         });
       }
 
@@ -974,9 +967,6 @@ export async function deployPosition({
       entry_tvl,
       entry_volume,
       entry_holders,
-      price_change_pct_at_deploy,
-      volume_change_pct_at_deploy,
-      tvl_change_pct_at_deploy,
     });
 
     appendDecision({
@@ -1802,7 +1792,6 @@ export async function closePosition({ position_address, reason }) {
             minutes_held: minutesHeld,
             close_reason: reason || "agent decision",
             signal_snapshot: signalSnapshot,
-            peak_pnl_pct: tracked.peak_pnl_pct ?? null,
             entry_mcap: tracked.entry_mcap ?? null,
             entry_tvl: tracked.entry_tvl ?? null,
             entry_volume: tracked.entry_volume ?? null,
@@ -2084,7 +2073,6 @@ export async function closePosition({ position_address, reason }) {
         minutes_held: minutesHeld,
         close_reason: reason || "agent decision",
         signal_snapshot: signalSnapshot,
-        peak_pnl_pct: tracked.peak_pnl_pct ?? null,
         entry_mcap: tracked.entry_mcap ?? null,
         entry_tvl: tracked.entry_tvl ?? null,
         entry_volume: tracked.entry_volume ?? null,
@@ -2149,46 +2137,6 @@ export async function closePosition({ position_address, reason }) {
     };
   } catch (error) {
     log("close_error", error.message);
-    // P2-RecoveryRecord: position may already be closed on-chain by concurrent action.
-    // If so, still call recordPerformance to keep pool memory accurate.
-    try {
-      if (tracked && tracked.pool) {
-        const poolAddr = tracked.pool;
-        const deployedAt = new Date(tracked.deployed_at).getTime();
-        const minsHeld = Math.floor((Date.now() - deployedAt) / 60000);
-        const cached = _positionsCache?.positions?.find(p => p.position === position_address);
-        const feesUsd = tracked.total_fees_claimed_usd || 0;
-        const pnlPct = cached?.pnl_pct ?? tracked.peak_pnl_pct ?? 0;
-        const pnlUsd = cached?.pnl_usd ?? 0;
-        const signalSnapshot = resolvePerformanceSignalSnapshot({ poolAddress: poolAddr, baseMint: tracked.base_mint || null, tracked });
-        await recordPerformance({
-          position: position_address,
-          pool: poolAddr,
-          pool_name: tracked.pool_name || poolAddr.slice(0, 8),
-          base_mint: tracked.base_mint || null,
-          strategy: tracked.strategy || "unknown",
-          bin_range: tracked.bin_range,
-          bin_step: tracked.bin_step || null,
-          volatility: tracked.volatility ?? null,
-          fee_tvl_ratio: tracked.fee_tvl_ratio || null,
-          organic_score: tracked.organic_score || null,
-          amount_sol: tracked.amount_sol || 0,
-          fees_earned_usd: feesUsd,
-          final_value_usd: cached?.total_value_usd ?? 0,
-          initial_value_usd: tracked.initial_value_usd || 0,
-          minutes_in_range: Math.max(0, minsHeld),
-          minutes_held: minsHeld,
-          close_reason: reason || "agent decision (recovery)",
-          signal_snapshot: signalSnapshot,
-          entry_mcap: tracked.entry_mcap ?? null,
-          entry_tvl: tracked.entry_tvl ?? null,
-          entry_volume: tracked.entry_volume ?? null,
-          entry_holders: tracked.entry_holders ?? null,
-        });
-        recordClose(position_address, reason || "agent decision (recovery)");
-        log("close_recover", `Recovered performance record for auto-closed position ${position_address.slice(0, 8)}: pnlPct=${Number(pnlPct).toFixed(2)}% fees=${feesUsd}`);
-      }
-    } catch (_) { /* non-blocking */ }
     return { success: false, error: error.message };
   }
 }

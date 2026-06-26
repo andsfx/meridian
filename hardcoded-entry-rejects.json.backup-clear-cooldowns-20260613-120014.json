@@ -1,0 +1,391 @@
+{
+  "rejects": {
+    "BcHEaaTCvycPwwsJ9yQTXdHP9X2gCLkznDbZ8VySpump": {
+      "rejects": [
+        {
+          "timestamp": "2026-06-13T09:45:28.049Z",
+          "reason": "fee/TVL 0.0166% < 0.02% (absolute floor)",
+          "transient": true
+        },
+        {
+          "timestamp": "2026-06-13T10:05:29.978Z",
+          "reason": "volatility 2.29 > max 2 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-13T10:10:35.474Z",
+          "reason": "volatility 2.15 > max 2 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-13T10:15:41.239Z",
+          "reason": "volatility 2.20 > max 2 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-13T10:20:34.521Z",
+          "reason": "volatility 2.24 > max 2 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-13T10:25:31.204Z",
+          "reason": "volatility 2.11 > max 2 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-13T11:45:23.473Z",
+          "reason": "fee/TVL 0.0184% < 0.02% (absolute floor)",
+          "transient": true
+        }
+      ],
+      "cooldownUntil": "2026-06-13T12:45:23.473Z"
+    },
+    "9UuLsJ3jf8ViBNeRcwXD53re5G3ypgfKK3s2EiMMpump": {
+      "rejects": [],
+      "cooldownUntil": null
+    },
+    "TESTMINT": {
+      "rejects": [],
+      "cooldownUntil": null
+    },
+    "VtwGKv7dcpY7aFb8H7MvZfEtUAKwtsHcXSkejCAparq": {
+      "rejects": [
+        {
+          "timestamp": "2026-06-12T17:40:42.984Z",
+          "reason": "volatility 4.75 > max 2.5 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-12T17:41:31.578Z",
+          "reason": "volatility 4.97 > max 2.5 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-12T17:45:46.968Z",
+          "reason": "volatility 4.51 > max 2.5 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-12T17:50:30.569Z",
+          "reason": "volatility 4.86 > max 2.5 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-12T18:05:39.206Z",
+          "reason": "volatility 5.66 > max 2.5 (too hot for sideways fee farmer)",
+          "transient": false
+        }
+      ],
+      "cooldownUntil": "2026-06-12T19:05:39.206Z"
+    },
+    "CujZ5W6GWYb5XYe3hsTJ6kjiaw5MdZjbKQEuGA6jpump": {
+      "rejects": [],
+      "cooldownUntil": null
+    },
+    "AdPAbURo4XpJabaxsv6qPD1267yAH92mNGDTncgUpump": {
+      "rejects": [],
+      "cooldownUntil": null
+    },
+    "SV151D5pjygAKA8aJJcKzm4wFnRX5G92Fye94jQJk7g": {
+      "rejects": [],
+      "cooldownUntil": null
+    },
+    "236ziZWiNPWeNk8aNB7abJpv4A6vHNP2XpxHH9VUpump": {
+      "rejects": [],
+      "cooldownUntil": null
+    },
+    "3ne9QxYRHybHK1LVmtEG8rH7L6nJ56W8KVWeB8ZGpump": {
+      "rejects": [],
+      "cooldownUntil": null
+    },
+    "6TPQEMKviAYz3h7gWwtTZJSACMtF2tbofNnPwSyLpump": {
+      "rejects": [],
+      "cooldownUntil": null
+    },
+    "6p3Y3WBXcVwMbYNoVsU4EuVb3gdMmzSKhkEfo8Vcpump": {
+      "rejects": [],
+      "cooldownUntil": null
+    },
+    "JCKwsT8UAbygnFkZ7u3amDUM7BXRtwUhCsHQv2khpump": {
+      "rejects": [
+        {
+          "timestamp": "2026-06-12T15:07:34.122Z",
+          "reason": "volatility 6.33 > max 2.5 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-12T15:35:45.356Z",
+          "reason": "volatility 2.55 > max 2.5 (too hot for sideways fee farmer)",
+          "transient": false
+        }
+      ],
+      "cooldownUntil": null
+    },
+    "An9cGvL6bHtWHDdtgpt7CQd9byMpPg7TpnFWofgLpump": {
+      "rejects": [],
+      "cooldownUntil": null
+    },
+    "9smMJxtru37j29w7pfcQZfpKXdsUohuDXqHFaLJcpump": {
+      "rejects": [
+        {
+          "timestamp": "2026-06-13T08:45:28.581Z",
+          "reason": "volatility 8.44 > max 2 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-13T08:50:27.389Z",
+          "reason": "volatility 5.97 > max 2 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-13T08:55:23.409Z",
+          "reason": "volatility 5.34 > max 2 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-13T10:15:41.304Z",
+          "reason": "volatility 2.30 > max 2 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-13T10:20:34.561Z",
+          "reason": "volatility 2.16 > max 2 (too hot for sideways fee farmer)",
+          "transient": false
+        }
+      ],
+      "cooldownUntil": "2026-06-13T11:20:34.561Z"
+    },
+    "2Mcwccy7Ckf6C2BUfwG9Z6kcYp8Mj5tKFBHEEoYCpump": {
+      "rejects": [],
+      "cooldownUntil": null
+    },
+    "2NK1zUACYojPGdVESHwHT8shKHusNWxiMSAgMRcwpump": {
+      "rejects": [],
+      "cooldownUntil": null
+    },
+    "3ooAahNToKYqPicvJ2npU6uyWvoqJEhHptq6wBC6pump": {
+      "rejects": [],
+      "cooldownUntil": null
+    },
+    "9ZtbETDNjnST9Y2zs82FZYy49xUMPgqXRh46YjjRpump": {
+      "rejects": [
+        {
+          "timestamp": "2026-06-13T09:15:29.402Z",
+          "reason": "fee/TVL 0.0277% in scout range but pool qualityScore 63.9 < 70 (scout_only rejected)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-13T09:50:26.085Z",
+          "reason": "fee/TVL 0.0573% in scout range but pool qualityScore 65.3 < 70 (scout_only rejected)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-13T10:50:26.662Z",
+          "reason": "volatility 3.26 > max 2 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-13T10:55:23.162Z",
+          "reason": "volatility 3.60 > max 2 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-13T11:00:23.179Z",
+          "reason": "volatility 4.86 > max 2 (too hot for sideways fee farmer)",
+          "transient": false
+        }
+      ],
+      "cooldownUntil": "2026-06-13T12:00:23.179Z"
+    },
+    "2ZcrrjkHkCoyoqx37t2njhTqXkq32di2QKdzHtAEpump": {
+      "rejects": [],
+      "cooldownUntil": null
+    },
+    "DY2ZAaZrt27b3PpXjxH8qqDBZwrEoFoSqb83t7VNpump": {
+      "rejects": [
+        {
+          "timestamp": "2026-06-12T22:45:29.517Z",
+          "reason": "volatility 5.23 > max 2.5 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-12T23:25:35.612Z",
+          "reason": "volatility 3.34 > max 2.5 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-12T23:30:24.932Z",
+          "reason": "volatility 3.58 > max 2.5 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-12T23:35:24.777Z",
+          "reason": "volatility 3.58 > max 2.5 (too hot for sideways fee farmer)",
+          "transient": false
+        }
+      ],
+      "cooldownUntil": "2026-06-12T10:55:31.759Z"
+    },
+    "9qpDk7hGSHqyfMGDT7p4zFQ35aGff248Qes48CgLpump": {
+      "rejects": [
+        {
+          "timestamp": "2026-06-13T00:45:37.277Z",
+          "reason": "volatility 4.84 > max 2.5 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-13T02:00:33.107Z",
+          "reason": "volatility 3.48 > max 2.5 (too hot for sideways fee farmer)",
+          "transient": false
+        }
+      ],
+      "cooldownUntil": "2026-06-13T01:45:37.277Z"
+    },
+    "Cy1mCA7qAe7AWABiPCBt7V11SfbjhHM7UBpd9TAXpump": {
+      "rejects": [
+        {
+          "timestamp": "2026-06-13T11:05:33.265Z",
+          "reason": "volatility 2.69 > max 2 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-13T11:15:34.152Z",
+          "reason": "volatility 4.92 > max 2 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-13T11:20:31.611Z",
+          "reason": "volatility 5.13 > max 2 (too hot for sideways fee farmer)",
+          "transient": false
+        }
+      ],
+      "cooldownUntil": "2026-06-12T17:25:48.557Z"
+    },
+    "7YMkZZwdcwUbXKjYpr5gFAVoB6aF4f9iLWK6pUcppump": {
+      "rejects": [
+        {
+          "timestamp": "2026-06-13T10:00:39.719Z",
+          "reason": "volatility 3.49 > max 2 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-13T10:10:35.543Z",
+          "reason": "volatility 2.10 > max 2 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-13T10:35:33.577Z",
+          "reason": "volatility 3.77 > max 2 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-13T10:40:27.243Z",
+          "reason": "volatility 3.80 > max 2 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-13T10:45:28.991Z",
+          "reason": "volatility 3.09 > max 2 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-13T11:55:29.315Z",
+          "reason": "volatility 3.45 > max 2 (too hot for sideways fee farmer)",
+          "transient": false
+        }
+      ],
+      "cooldownUntil": "2026-06-13T12:55:29.315Z"
+    },
+    "HekScrY6tsVMB7TMrkEmV5cEGz185PPvr86opBgipump": {
+      "rejects": [
+        {
+          "timestamp": "2026-06-12T15:30:36.123Z",
+          "reason": "volatility 7.80 > max 2.5 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-12T15:40:51.329Z",
+          "reason": "volatility 5.65 > max 2.5 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-12T16:25:48.640Z",
+          "reason": "volatility 4.60 > max 2.5 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-12T17:26:39.097Z",
+          "reason": "volatility 3.71 > max 2.5 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-12T17:30:36.005Z",
+          "reason": "volatility 3.86 > max 2.5 (too hot for sideways fee farmer)",
+          "transient": false
+        }
+      ],
+      "cooldownUntil": "2026-06-12T18:30:36.005Z"
+    },
+    "AvxFBjWydMYWD7C8pHzSkGxNYAFWr7aNBbAKm84bpump": {
+      "rejects": [
+        {
+          "timestamp": "2026-06-12T22:35:18.673Z",
+          "reason": "volatility 6.24 > max 2.5 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-12T22:40:25.143Z",
+          "reason": "volatility 6.55 > max 2.5 (too hot for sideways fee farmer)",
+          "transient": false
+        }
+      ],
+      "cooldownUntil": null
+    },
+    "8mJjh1t8gnVv6dNKQ3QRkTMSbEcNLjjL7VH5Wmj4pump": {
+      "rejects": [
+        {
+          "timestamp": "2026-06-13T03:40:23.834Z",
+          "reason": "volatility 7.11 > max 2.5 (too hot for sideways fee farmer)",
+          "transient": false
+        }
+      ],
+      "cooldownUntil": null
+    },
+    "FFosggieyf6ceEdapfQjeWetyFr9CjUzm9BLoxbopump": {
+      "rejects": [
+        {
+          "timestamp": "2026-06-13T08:05:28.027Z",
+          "reason": "volatility 5.13 > max 2 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-13T08:10:27.718Z",
+          "reason": "volatility 5.14 > max 2 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-13T08:20:25.966Z",
+          "reason": "volatility 3.42 > max 2 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-13T08:30:26.722Z",
+          "reason": "volatility 5.80 > max 2 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-13T08:35:28.762Z",
+          "reason": "volatility 5.96 > max 2 (too hot for sideways fee farmer)",
+          "transient": false
+        },
+        {
+          "timestamp": "2026-06-13T09:35:33.494Z",
+          "reason": "TVL/MC 26.9% > 20% (pool saturated; fee yield diluted)",
+          "transient": false
+        }
+      ],
+      "cooldownUntil": "2026-06-13T10:35:33.494Z"
+    }
+  },
+  "lastUpdated": "2026-06-13T11:55:29.315Z"
+}
