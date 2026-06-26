@@ -107,7 +107,7 @@ const llmApiKey = process.env.LLM_API_KEY || process.env.OPENROUTER_API_KEY;
   client = new OpenAI({
     baseURL: llmBaseUrl,
     apiKey: llmApiKey || 'sk-or-v1-...',
-    timeout: 5 * 60 * 1000,
+    timeout: 30_000, // 30s global timeout (was 5min)
   });
 // }
 
@@ -235,10 +235,13 @@ export async function agentLoop(goal, maxSteps = config.llm.maxSteps, sessionHis
       let response;
       let usedModel = activeModel;
       // Force a tool call on step 0 for action intents — prevents the model from inventing deploy/close outcomes
-      const ACTION_INTENTS = /\b(deploy|open|add liquidity|close|exit|withdraw|claim|swap|block|unblock)\b/i;
-      let toolChoice = (step === 0 && (ACTION_INTENTS.test(goal) || mustUseRealTool)) ? "required" : "auto";
+      const ACTION_INTENTS = /\\b(deploy|open|add liquidity|close|exit|withdraw|claim|swap|block|unblock)\\b/i;
+      let toolChoice = "auto"; // Always auto — required hangs on thinking-mode providers
 
       for (let attempt = 0; attempt < 3; attempt++) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 25_000); // 25s abort before 30s client timeout
+
         try {
           const reqParams = {
             model: usedModel,
@@ -246,11 +249,30 @@ export async function agentLoop(goal, maxSteps = config.llm.maxSteps, sessionHis
             tools: getToolsForRole(agentType, goal),
             temperature: config.llm.temperature,
             max_tokens: maxOutputTokens ?? config.llm.maxTokens,
+            timeout: 30_000, // 30s hard timeout for LLM calls (was 5min)
+            signal: controller.signal,
           };
           if (!omitToolChoice) reqParams.tool_choice = toolChoice;
           
           response = await client.chat.completions.create(reqParams);
+          clearTimeout(timeoutId);
         } catch (error) {
+          // Gateway hang with tool_choice=required — timeout/abort → retry with auto
+          if (error.name === 'APIConnectionTimeoutError' || error.name === 'AbortError' ||
+              /timed out|timeout/i.test(String(error.message || ''))) {
+            if (toolChoice === 'required') {
+              toolChoice = 'auto';
+              log('agent', `LLM call timed out — retrying with tool_choice=auto`);
+              attempt -= 1;
+              continue;
+            }
+            if (!omitToolChoice) {
+              omitToolChoice = true;
+              log('agent', `LLM call timed out — retrying without tool_choice`);
+              attempt -= 1;
+              continue;
+            }
+          }
           if (providerMode === "system" && isSystemRoleError(error)) {
             providerMode = "user_embedded";
             messages = buildMessages(systemPrompt, sessionHistory, goal, providerMode);
